@@ -1,0 +1,27 @@
+{
+    "default": {"firstScene": "scene1"},
+    "hotSpotDebug": false,
+    "scenes": {"scene1": {
+        "hotSpots": [{
+            "panorama_url": "/Example/pano360/point_info/pic_20240606_105632.json",
+            "point_pitch": -6.118390834756571,
+            "point_yaw": -31.541578654299656,
+            "text_pint": "",
+            "sceneId": "scene79429",
+            "pitch": -18.770851758066453,
+            "title": "",
+            "type": "scene",
+            "yaw": -23.760230464429892
+        }],
+        "panorama": "/img/PANO_2024-06-06/pic_20240606_105619.jpg",
+        "autoLoad": true,
+        "crossOrigin": "use-credentials",
+        "lon": 0,
+        "pitch": -22.778688791982994,
+        "title": "pic_20240606_105619",
+        "yaw": -30.124243577291963,
+        "lat": 0
+    }},
+    "hotPointDebug": true,
+    "sceneFadeDuration": 1000
+}

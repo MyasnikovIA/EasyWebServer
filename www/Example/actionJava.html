@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="/lib/System/main.js" type="text/javascript"></script>
+</head>
+<body>
+     <cmpAction name="getNosRegisterID" query_type="java">
+        <!--import packet="org.json.JSONObject" path="json-20230227.jar"/-->
+         <![CDATA[
+         System.out.println("----dddddd----");
+         System.out.println(vars);
+         vars.put("EDIT_TEXT2", vars.getString("LPU_TEXT")+"--*");
+         vars.put("EDIT_TEXT", String.valueOf(vars.getInt("EDIT_TEXT")+999));
+         ]]>
+         <cmpActionVar name="LPU"         src="LPU"            srctype="session"/>
+         <cmpActionVar name="LPU_TEXT"    src="LPU_TEXT"       srctype="var"  get="gLPU"/>
+         <cmpActionVar name="EDIT_TEXT"   src="ctrlEditText"   srctype="ctrl" put="" len="512" default="22222222"/>
+         <cmpActionVar name="INPUT_TEXT"  src="ctrlEditText"   srctype="ctrl"/>
+         <cmpActionVar name="NOS_REGISTR" src="varNOS_REGISTR" srctype="var"  put="" len="17"/>
+         <cmpActionVar name="EDIT_TEXT2"                       srctype="var"  put=""/>
+     </cmpAction>
+     <input name="ctrlEditText" value="111"/>
+     <button class="easyui-linkbutton" data-options="iconCls:'icon-add'" name="testBtn" width="60%" onclick="runAction();">ADD1</button>
+     <script>
+         function runAction() {
+              executeAction('getNosRegisterID', function(vars) {
+                   console.log('getVars()', getVars());
+                   console.log('vars', vars);
+              });
+         }
+    </script>
+</body>
+</html>

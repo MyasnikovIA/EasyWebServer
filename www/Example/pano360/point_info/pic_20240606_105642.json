@@ -1,0 +1,17 @@
+{
+    "default": {"firstScene": "scene1"},
+    "hotSpotDebug": false,
+    "scenes": {"scene1": {
+        "hotSpots": [],
+        "panorama": "/img/PANO_2024-06-06/pic_20240606_105642.jpg",
+        "autoLoad": true,
+        "crossOrigin": "use-credentials",
+        "lon": 0,
+        "pitch": -24.413348927017115,
+        "title": "pic_20240606_105642",
+        "yaw": -6.7703862452244294,
+        "lat": 0
+    }},
+    "hotPointDebug": true,
+    "sceneFadeDuration": 1000
+}

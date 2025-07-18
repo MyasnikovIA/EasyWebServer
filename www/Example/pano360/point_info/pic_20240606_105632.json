@@ -1,0 +1,40 @@
+{
+    "default": {"firstScene": "scene1"},
+    "hotSpotDebug": false,
+    "scenes": {"scene1": {
+        "hotSpots": [
+            {
+                "panorama_url": "/Example/pano360/point_info/pic_20240606_105619.json",
+                "point_pitch": -1.1157060750879921,
+                "point_yaw": -149.04584731622106,
+                "text_pint": "",
+                "sceneId": "scene79429",
+                "pitch": -22.612935960831976,
+                "title": "",
+                "type": "scene",
+                "yaw": 173.3224504351493
+            },
+            {
+                "panorama_url": "/Example/pano360/point_info/pic_20240606_105642.json",
+                "point_pitch": -5.485272997293791,
+                "point_yaw": 6.016209221449685,
+                "text_pint": "",
+                "sceneId": "scene79429",
+                "pitch": -20.22549360017018,
+                "title": "",
+                "type": "scene",
+                "yaw": -27.651225039627793
+            }
+        ],
+        "panorama": "/img/PANO_2024-06-06/pic_20240606_105632.jpg",
+        "autoLoad": true,
+        "crossOrigin": "use-credentials",
+        "lon": 0,
+        "pitch": -8.694715202853303,
+        "title": "pic_20240606_105632",
+        "yaw": -32.42298434272254,
+        "lat": 0
+    }},
+    "hotPointDebug": true,
+    "sceneFadeDuration": 1000
+}

@@ -1,0 +1,48 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Basic CRUD Application - jQuery EasyUI CRUD Demo</title>
+        <script src="/lib/System/main.js" type="text/javascript"></script>
+    </head>
+    <body>
+    <cmpDataset name="dsMyFun" query_type="java">
+        <import packet="org.json.JSONObject" path="json-20230227.jar"/>
+        <![CDATA[
+        System.out.println("--------!cmpDataset!--------");
+        vars.put("outArg", "---3453453453------");
+        data.put((new JSONObject()).put("CONTACT","333333").put("TEXT","333333"));
+        data.put((new JSONObject()).put("CONTACT","444444").put("TEXT","444444"));
+        data.put((new JSONObject()).put("CONTACT","555555").put("TEXT","555555"));
+        ]]>
+        <var name="inpArg" src="inpArg"      srctype="var"  default="1111"/>
+        <var name="outArg" src="ctrlOutText" srctype="ctrl" default="2222" len="-1"/>
+    </cmpDataset>
+
+    <input name="ctrlOutText" value=""/>
+    <table id="dg" title="My Users" class="easyui-datagrid" style="width:700px;height:250px" toolbar="#toolbar" pagination="true" rownumbers="true" fitColumns="true" singleSelect="true">
+        <thead>
+        <tr>
+            <th field="CONTACT">First Name</th>
+            <th field="TEXT">Last Name</th>
+        </tr>
+        </thead>
+    </table>
+    <div id="toolbar">
+        <a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-add" plain="true" onclick="newUser()">New User</a>
+        <a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-edit" plain="true" onclick="editUser()">Edit User</a>
+        <a href="javascript:void(0)" class="easyui-linkbutton" iconCls="icon-remove" plain="true" onclick="destroyUser()">Remove User</a>
+    </div>
+    <button class="easyui-linkbutton" data-options="iconCls:'icon-add'" name="testBtn" width="60%" onclick="runDataSet();">runDataSet</button>
+    <script type="text/javascript">
+        function runDataSet() {
+             refreshDataSet('dsMyFun', function(data) {
+                 for (let ind in data) {
+                    $('#dg').datagrid('appendRow',data[ind]);
+                 }
+             });
+        }
+    </script>
+    </body>
+    </html>

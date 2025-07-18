@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="/lib/System/main.js" type="text/javascript"></script>
+
+</head>
+<body>
+
+
+<cmpAction name="getNosRegisterID">
+    <![CDATA[
+        NOS_REGISTR := 'dddddddddddddddddddd';
+        LPU_TEXT := LPU;
+        EDIT_TEXT2 := 'Текст из БД';
+        EDIT_TEXT := 'Текст из БД 2';
+    ]]>
+    <cmpActionVar name="LPU"          src="LPU"            srctype="session"/>
+    <cmpActionVar name="LPU_TEXT"     src="LPU_TEXT"       srctype="var"/>
+    <cmpActionVar name="NOS_REGISTR"  src="varNOS_REGISTR" srctype="var" len="-1"/>
+    <cmpActionVar name="EDIT_TEXT"    src="ctrlEditText"   srctype="ctrl" default="22222222"/>
+    <cmpActionVar name="EDIT_TEXT2"                        srctype="ctrl" len="-1"/>
+</cmpAction>
+
+<input name="ctrlEditText" value="1111111111"/>
+<input name="EDIT_TEXT2" value="222222"/>
+<script>
+   setVar('LPU_TEXT', "fff111111");
+   executeAction('getNosRegisterID', function(vars) {
+        console.log('getVars()', getVars());
+        console.log('vars', vars);
+   });
+</script>
+</body>
+</html>

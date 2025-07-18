@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="lib/Pannellum2_5_6/pannellum.css"/>
+    <script type="text/javascript" src="lib/Pannellum2_5_6/pannellum.js"></script>
+    <script type="text/javascript" src="lib/Pannellum2_5_6/libpannellum.js"></script>
+    <script src="lib/OpenStreetMap/OpenLayers-1.0.0/OpenLayers.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="lib/OpenStreetMap/OpenLayers-1.0.0/style.css">
+    <script src="lib/OpenStreetMap/OpenLayers-1.0.0/osm.js"></script>
+    <link rel="stylesheet" href="https://openlayers.org/en/latest/css/ol.css" />
+    <script src="/lib/System/main.js" type="text/javascript"></script>
+</head>
+<body>
+  <div class="easyui-layout" data-options="fit:true">
+    <div data-options="region:'east',split:true" style="width:300px">
+      <div class="easyui-layout" data-options="fit:true">
+        <div id="tb" style="padding:3px">
+          <span>File name:</span>
+          <input id="itemid" style="line-height:26px;border:1px solid #ccc">
+        </div>
+        <table id="tt" class="easyui-datagrid" style="width:350px;height:100%" url="/Example/pano360/gridPanoListPhoto.java" toolbar="#tb" data-options="singleSelect:true,rownumbers:true">
+          <thead>
+          <tr>
+            <th field="name" width="100%"></th>
+          </tr>
+          </thead>
+        </table>
+      </div>
+    </div>
+    <div data-options="region:'center'">
+      <div class="easyui-layout" data-options="fit:true">
+          <div data-options="region:'center'"  id="canvasPoint"></div>
+          <div data-options="region:'south',split:true"  style="height:30%" id="canvasMapPoint"></div>
+      </div>
+    </div>
+    <div data-options="region:'south',border:false" style="text-align:right;padding:5px 0 0;">
+        <!--
+        <a class="easyui-linkbutton" data-options="iconCls:'icon-ok'" href="javascript:void(0)" onclick="javascript:onSelectPoint()" style="width:80px">Ok</a>
+        -->
+        <a class="easyui-linkbutton" data-options="iconCls:'icon-ok'" href="javascript:void(0)" onclick="onSavePoint();" style="width:80px">Save</a>
+    </div>
+  </div>
+
+
+
+  <div id="windowPotSpot" class="easyui-window" title="" data-options="iconCls:'icon-save',modal:false,closed:true," style="width:60%;height:60%;padding:5px;top:10%;">
+      <div class="easyui-layout" data-options="fit:true">
+          <div data-options="region:'center'" id="canvasPointHotSpot"></div>
+          <div data-options="region:'south',border:false" style="text-align:right;padding:5px 0 0;">
+              <a class="easyui-linkbutton" data-options="iconCls:'icon-ok'" href="javascript:void(0)" onclick="javascript:onSelectHotSpot()" style="width:80px">Ok</a>
+              <a class="easyui-linkbutton" data-options="iconCls:'icon-cancel'" href="javascript:void(0)" onclick="javascript:closeModal();" style="width:80px">Cancel</a>
+          </div>
+      </div>
+  </div>
+
+
+</body>
+<cmpAction name="getAction" query_type="java">
+  <![CDATA[
+     
+  ]]>
+</cmpAction>
+<script>
+  var sceneSelectPoint={};
+  var scenePoint=null;
+  var selectPoint={};
+  var scene_osm=null;
+  var scene_osm_lonLat=null;
+  var selectGridRow=null;
+  var scene_osm_point=null;
+  var isOpenSelectHotSpot=false;
+  var sceneMain=null;
+  var selectGridRowHotSpot={};
+  var jsonPanoObjStarter ;
+
+
+
+function getRandomInt(max) {
+    return Math.floor(Math.random() * max);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------
+  function closeModal() {
+      isOpenSelectHotSpot = false;
+      scenePoint.destroy();
+      scenePoint = null;
+      selectGridRowHotSpot = null;
+      $('#windowPotSpot').window('close');
+  }
+
+  onClickHotSpot = function(hs) {
+      let currentUrl = new URL(window.location.href);
+      if (!currentUrl.searchParams.get('info')) {
+          currentUrl.searchParams.append('info', hs.panorama_url.split('/')[4]);
+      } else {
+          currentUrl.searchParams.set('info', hs.panorama_url.split('/')[4]);
+      }
+      window.history.pushState({}, '', currentUrl);
+
+      let row = {};
+      row['name'] = hs.panorama_url.split('/')[4];
+      row['filename'] = hs.panorama_url.split('/')[4].split('.')[0];
+      row['fullPath'] = '/img/PANO_2024-06-06/'+ hs.panorama_url.split('/')[4];
+      var jsonPanoObj = getJsonUrlData('/Example/pano360/getPanoFromGrid.java', JSON.stringify(row));
+      if (sceneMain) {
+          sceneMain.destroy()
+      }
+      sceneMain = pannellum.viewer('canvasPoint', jsonPanoObj);
+  };
+
+  onDblClickScene = function(coords) {
+     selectPoint = coords;
+     openModal();
+  };
+
+  function openModal() {
+      isOpenSelectHotSpot = true;
+      $('#windowPotSpot').window('open');
+  }
+  onSelectHotSpot = function() {
+      if (scenePoint) {
+          selectGridRowHotSpot['fullPath'] = selectGridRow['fullPath'];
+          selectGridRowHotSpot['filename'] = selectGridRow['filename'];
+          selectGridRowHotSpot['name'] = selectGridRow['name'];
+          selectGridRowHotSpot['absolutePath'] = selectGridRow['absolutePath'];
+          selectGridRowHotSpot['lon'] = null;
+          selectGridRowHotSpot['lat'] = null;
+          if (scene_osm_lonLat) {
+                selectGridRowHotSpot['lon'] = scene_osm_lonLat.lon;
+                selectGridRowHotSpot['lat'] = scene_osm_lonLat.lat;
+          } else {
+                selectGridRowHotSpot['lon'] = 0;
+                selectGridRowHotSpot['lat'] = 0;
+          }
+          selectGridRowHotSpot['yaw'] = sceneMain.getYaw();
+          selectGridRowHotSpot['pitch'] = sceneMain.getPitch();
+
+          var fileName = scenePoint.getConfig().panorama;
+          var fileNameOnly = fileName.split('/')[3];
+          selectGridRowHotSpot['potspot'] = {};
+          selectGridRowHotSpot['potspot']['yaw'] = selectPoint.yaw;
+          selectGridRowHotSpot['potspot']['pitch'] = selectPoint.pitch;
+          selectGridRowHotSpot['potspot']['point_yaw'] = scenePoint.getYaw();
+          selectGridRowHotSpot['potspot']['point_pitch'] = scenePoint.getPitch();
+          selectGridRowHotSpot['potspot']['name_json'] = fileNameOnly.split('.')[0];
+          selectGridRowHotSpot['potspot']['fileName'] = fileName; //
+          getJsonUrlData('addHotSpot.java', JSON.stringify(selectGridRowHotSpot));
+          // selectGridRowHotSpot - получть данные о точке перехода можно через грид
+
+          var fileNamePoint = scenePoint.getConfig().panorama;
+          var fileNameOnlyPoint = fileName.split('/')[3];
+          hotSpot = {
+              "title": "",
+              "yaw": selectPoint.yaw,
+              "pitch": selectPoint.pitch,
+              "point_yaw": sceneMain.getYaw(),
+              "point_pitch": sceneMain.getPitch(),
+              "panorama_url": "scene_info/"+fileNameOnlyPoint.split('.')[0]+".json",
+              "type": "scene",
+              "text_pint": "",
+              "sceneId": "scene"+getRandomInt(999999)
+          }
+          sceneMain.addHotSpot(hotSpot,'scene1')
+          sceneMain.getConfig().scenes.scene1.hotSpots.push(hotSpot);
+      }
+      closeModal();
+  }
+//------------------------------------------------------------------------------------------------------------------------------
+
+function onSavePoint() {
+    selectGridRow['lon'] = null;
+    selectGridRow['lat'] = null;
+    if (scene_osm_lonLat) {
+        selectGridRow['lon'] = scene_osm_lonLat.lon;
+        selectGridRow['lat'] = scene_osm_lonLat.lat;
+    } else {
+        selectGridRow['lon'] = 0;
+        selectGridRow['lat'] = 0;
+    }
+    selectGridRow['yaw'] = sceneMain.getYaw();
+    selectGridRow['pitch'] = sceneMain.getPitch();
+    getJsonUrlData('/Example/pano360/saveLatLonPano.java', JSON.stringify(selectGridRow));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------
+function doSearch(){
+  $('#tt').datagrid('load',{
+      name: $('#itemid').val(),
+  });
+}
+
+$('#itemid').searchbox({
+  searcher:function(value) {
+      doSearch();
+  },
+});
+
+$('#tt').form({
+onChange: function(target){
+   console.log(target);
+}
+});
+
+$('#tt').datagrid({
+  onClickRow: function(row){
+      var row = $('#tt').datagrid('getSelected');
+      if (row) {
+          var jsonPanoObj = getJsonUrlData('/Example/pano360/getPanoFromGrid.java', JSON.stringify(row));
+          if (!isOpenSelectHotSpot) {
+              selectGridRow = row;
+              jsonPanoObj.onDblClick = onDblClickScene;
+              jsonPanoObj.onClickHotSpot = onClickHotSpot;
+              if (sceneMain) {
+                  sceneMain.destroy()
+              }
+              sceneMain = pannellum.viewer('canvasPoint', jsonPanoObj);
+              if (jsonPanoObj.scenes.scene1['lon'] && jsonPanoObj.scenes.scene1['lat']) {
+                 scene_osm.addMarker('test', jsonPanoObj.scenes.scene1['lon'], jsonPanoObj.scenes.scene1['lat'],{'TEst':1111});
+                 scene_osm_lonLat = {'lon':jsonPanoObj.scenes.scene1['lon'], 'lat': jsonPanoObj.scenes.scene1['lat']};
+              }
+          } else {
+              selectGridRowHotSpot = row;
+              if (scenePoint) {
+                  scenePoint.destroy()
+              }
+              scenePoint = pannellum.viewer('canvasPointHotSpot', jsonPanoObj);
+          }
+      }
+  },
+  onDblClickRow: function(row) {
+      var row = $('#tt').datagrid('getSelected');
+      if (row){
+          console.log('click row',row)
+      }
+  }
+})
+//------------------------------------------------------------------------------------------------------------------------------
+
+  let params = new URLSearchParams(document.location.search);
+  let value = params.get('info');
+
+    if (!value) {
+        jsonPanoObjStarter = getJsonUrlData('/Example/pano360/point_info/default.json');
+    } else {
+        jsonPanoObjStarter = getJsonUrlData('/Example/pano360/point_info/'+value);
+    }
+    jsonPanoObjStarter.onDblClick = onDblClickScene;
+    jsonPanoObjStarter.onClickHotSpot = onClickHotSpot;
+    //sceneSelectPoint
+    sceneMain = pannellum.viewer('canvasPoint', jsonPanoObjStarter);
+    if (!jsonPanoObjStarter['lon']) {
+        jsonPanoObjStarter['lon'] = 98.29704566996978;
+    }
+    if (!jsonPanoObjStarter['lat']) {
+        jsonPanoObjStarter['lat'] = 7.8278988917053285;
+    }
+    if (scene_osm == null) {
+          scene_osm = osm.viewer('canvasMapPoint');
+          scene_osm.addMarker('test',jsonPanoObjStarter['lon'],jsonPanoObjStarter['lat'],{'default':true});
+          scene_osm.setCenter(jsonPanoObjStarter['lon'],jsonPanoObjStarter['lat']);
+          scene_osm.onClickMarker(function(marker) {
+              console.log(marker)
+          });
+          scene_osm.onClickMap(function(lonLat) {
+              scene_osm.addMarker('test', lonLat.lon, lonLat.lat,{'TEst':1111});
+              scene_osm_lonLat = lonLat;
+          });
+    }
+</script>
+
+</html>

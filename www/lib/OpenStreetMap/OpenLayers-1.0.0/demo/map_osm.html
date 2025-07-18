@@ -1,0 +1,26 @@
+<html>
+    <head>
+        <title>OpenLayers Text File Example</title>
+        <script src="lib/OpenStreetMap/OpenLayers-2.13.1/OpenLayers.debug.js"></script>
+        <!--script src="lib/OpenStreetMap/OpenLayers-1.0.0/OpenLayers.min.js"></script-->
+        <script src="lib/OpenStreetMap/OpenLayers-1.0.0/osm.js"></script>
+        <link rel="stylesheet" href="lib/OpenStreetMap/OpenLayers-2.13.1/theme/default/style.css" type="text/css">
+    </head>
+    <body>
+        <div id="w_map"></div>
+    </body>
+    <script>
+        scene_osm = osm.viewer('w_map');
+        scene_osm.addMarker('test', 98.29704566996978, 7.8278988917053285,{'TEst':1111});
+        scene_osm.setCenter(98.29704566996978,7.8278988917053285);
+        scene_osm.onClickMarker(function(marker) {
+            console.log(marker)
+        });
+        var indMarker = 0;
+        scene_osm.onClickMap(function(lonLat) {
+            indMarker+=1;
+            scene_osm.addMarker('test_'+indMarker, lonLat.lon, lonLat.lat,{'TEst':1111});
+            console.log(lonLat)
+        });
+    </script>
+</html>

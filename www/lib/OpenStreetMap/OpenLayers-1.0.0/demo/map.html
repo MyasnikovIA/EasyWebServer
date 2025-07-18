@@ -1,0 +1,97 @@
+<html>
+<head><title>OpenLayers Text File Example</title></head>
+   <script src="lib/OpenStreetMap/OpenLayers-1.0.0/OpenLayers.min.js"></script>
+   <link rel="stylesheet" type="text/css" href="lib/OpenStreetMap/OpenLayers-1.0.0/style.css">
+   <script>
+        var fromProjection = new OpenLayers.Projection("EPSG:4326");
+        var toProjection   = new OpenLayers.Projection("EPSG:900913");
+        var marker_layer = null;
+        var marker = null;
+        var wms_layer = null;
+
+        OpenLayers.Control.Click = OpenLayers.Class(OpenLayers.Control, {
+            defaultHandlerOptions: {
+                'single': true,
+                'double': false,
+                'pixelTolerance': 0,
+                'stopSingle': false,
+                'stopDouble': false
+            },
+            initialize: function(options) {
+                this.handlerOptions = OpenLayers.Util.extend({}, this.defaultHandlerOptions);
+                OpenLayers.Control.prototype.initialize.apply(
+                    this, arguments
+                );
+                this.handler = new OpenLayers.Handler.Click(
+                    this, {
+                        'click': this.trigger
+                    }, this.handlerOptions
+                );
+            },
+            trigger: function(e) {
+                var lonlat = map.getLonLatFromPixel(e.xy).transform( toProjection,fromProjection);
+                console.log('Location click: '+lonlat.lon+','+lonlat.lat);
+            },
+        });
+
+        function onMakerMouseDown(evt)
+        {
+            debugger
+            // evt.object.data
+            // alert(evt.x);
+            alert(marker.CLASS_NAME);
+            OpenLayers.Event.stop(evt);
+        }
+
+        function addMarker(x, y, data) {
+            marker = new OpenLayers.Marker(new OpenLayers.LonLat(x, y).transform( fromProjection, toProjection) );
+            // marker.setOpacity(opacity);
+            marker.events.register('mousedown', marker, onMakerMouseDown);
+            marker_layer.addMarker(marker);
+            marker.data=data;
+        }
+
+        function init() {
+            var wms_layer = new OpenLayers.Layer.OSM();
+            map = new OpenLayers.Map("w_map");
+            map.addLayer(wms_layer);
+            var pois = new OpenLayers.Layer.Text( "My Points",{location: "textfile.txt"});
+            map.addLayer(pois);
+
+
+
+            var lonLat = new OpenLayers.LonLat(98.29704566996978, 7.8278988917053285).transform( fromProjection, toProjection)   ;
+            var zoom=17;
+            map.setCenter (lonLat, zoom);
+
+            // добавляем событие клика на карту
+            var click = new OpenLayers.Control.Click();
+            map.addControl(click);
+            click.activate();
+
+            marker_layer = new OpenLayers.Layer.Markers("markers");
+            map.addLayers([wms_layer, marker_layer]);
+
+            addMarker(98.29712077182248,7.82793609271676, '111111111111111');
+
+            // Удаляекм логотип
+            let timerId = setTimeout(function tick() {
+                let ctrlDelete = document.querySelector('[class="olControlAttribution olControlNoSelect"]');
+                if (!ctrlDelete) {
+                    timerId = setTimeout(tick, 1000);
+                } else {
+                    ctrlDelete.remove();
+                    clearTimeout(timerId);
+                }
+            }, 1000);
+	    }
+
+        setTimeout(function() {
+            init();
+        }, 2000);
+  </script>
+   <body>
+    <div id="w_map"></div>
+  </body>
+
+</html>

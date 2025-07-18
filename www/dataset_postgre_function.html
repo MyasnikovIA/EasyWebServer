@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!--meta charset="UTF-8"-->
+    <title>Title</title>
+    <script src="/lib/System/main.js" type="text/javascript"></script>
+
+</head>
+<body>
+
+<cmpDataset name="dsMyFun">
+    <before>
+        <![CDATA[
+        Declare
+            tmp_name text;
+        BEGIN
+            tmp_name :='123';
+            outName :='456 - данные возвращаются только в таблице';
+        end;
+        ]]>
+    </before>
+    <![CDATA[
+        SELECT tmp_name,outName,inpArg,* FROM pg_database;
+    ]]>
+    <var name="outName" src="outName" srctype="var" len="-1"/>
+    <var name="inpArg" src="inpArg" srctype="var" />
+</cmpDataset>
+<button onclick="myRun();">run</button>
+<script>
+    function myRun() {
+        setVar('inpArg', '123-входящая переменная');
+        refreshDataSet('dsMyFun', function(data) {
+             console.log('getVars()', getVars());
+             console.log('data', data);
+        });
+    }
+</script>
+
+</body>
+</html>
