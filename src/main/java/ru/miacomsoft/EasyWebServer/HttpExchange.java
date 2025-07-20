@@ -9,8 +9,6 @@ import java.nio.charset.Charset;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import static ru.miacomsoft.EasyWebServer.ServerResourceHandler.expandArray;
-import static ru.miacomsoft.EasyWebServer.ServerResourceHandler.findSequence;
 
 public class HttpExchange {
     public Socket socket;
@@ -192,7 +190,7 @@ public class HttpExchange {
     }
 
     public String readLineTerm() {
-        String tmpStr = null;
+        String tmpStr = "";
         try {
             byte[] temp = new byte[16384];
             int bytesRead;
