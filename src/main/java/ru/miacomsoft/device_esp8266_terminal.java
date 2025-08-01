@@ -66,8 +66,12 @@ dir:0
         boolean isRunning = true;
         while (isRunning) {
             String message = query.readLineTerm();
-            if(message==null) {
+            if(message.length()==0) {
                 continue;
+            }
+            if(message==null) {
+                GLOBAL_LIST_DEVICE_CONNECT.remove(DeviceName);
+                break;
             }
             System.out.println("device_esp8266_terminal_message---"+message);
             if (query.queryPtP != null) {
@@ -161,6 +165,20 @@ dir:0
         }
 
          */
+    }
+
+
+    @Get(url="device_esp8266_terminal_message_send.java",ext="json")
+    public JSONObject onPageViewWeb(HttpExchange query) {
+        System.out.println(BROADCAST_MESSAGE_LIST);
+        System.out.println(GLOBAL_LIST_DEVICE_CONNECT);
+        JSONObject res = new JSONObject();
+        for(Map.Entry<String, HttpExchange> entry : GLOBAL_LIST_DEVICE_CONNECT.entrySet()) {
+            String key = entry.getKey();
+            HttpExchange value = entry.getValue();
+            res.put(key,value.toString());
+        }
+        return res;
     }
 
     @Get(url="device_esp8266_view_terminal.java",ext="json")
