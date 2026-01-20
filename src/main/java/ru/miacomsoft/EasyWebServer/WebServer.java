@@ -9,6 +9,8 @@ import java.io.File;
 import java.io.FileWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -131,9 +133,91 @@ public class WebServer implements Runnable {
      * @return
      */
     public Boolean config(String confPropName, String confPropValue) {
+        // Проверяем, является ли значение списком (содержит точку с запятой)
+        if (confPropValue.contains(";")) {
+            return handleListProperty(confPropName, confPropValue);
+        }
         return ServerConstant.config.setProp(confPropName, confPropValue);
     }
+    /**
+     * Обрабатывает свойства, которые являются списками (массивами)
+     * @param confPropName имя свойства
+     * @param confPropValue значение свойства с разделителями
+     * @return true если успешно обработано
+     */
+    private Boolean handleListProperty(String confPropName, String confPropValue) {
+        try {
+            // Если свойство явно не поддерживается как список, сохраняем как строку
+            if (!isListProperty(confPropName)) {
+                return ServerConstant.config.setProp(confPropName, confPropValue);
+            }
 
+            String[] values = confPropValue.split(";");
+            List<String> valueList = new ArrayList<>();
+
+            for (String value : values) {
+                String trimmed = value.trim();
+                if (!trimmed.isEmpty()) {
+                    valueList.add(trimmed);
+                }
+            }
+
+            // Определяем, является ли свойство известным списком
+            switch (confPropName) {
+                case "WEBAPP_DIR":
+                    // Для WEBAPP_DIR используем специальную обработку
+                    ServerConstant.config.WEBAPP_DIRS.clear();
+                    for (String dir : valueList) {
+                        // Корректируем путь, если он относительный
+                        String fullPath = dir;
+                        if (!dir.contains("/") && !dir.contains("\\")) {
+                            fullPath = ServerConstant.config.SERVER_HOM + File.separator + dir;
+                        }
+                        ServerConstant.config.WEBAPP_DIRS.add(fullPath);
+                    }
+                    // Для обратной совместимости сохраняем первый каталог в WEBAPP_DIR
+                    if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+                        ServerConstant.config.WEBAPP_DIR = ServerConstant.config.WEBAPP_DIRS.get(0);
+                    }
+                    return true;
+
+                case "LIB_CSS":
+                    ServerConstant.config.LIB_CSS.clear();
+                    ServerConstant.config.LIB_CSS.addAll(valueList);
+                    return true;
+
+                case "LIB_JS":
+                    ServerConstant.config.LIB_JS.clear();
+                    ServerConstant.config.LIB_JS.addAll(valueList);
+                    return true;
+
+                case "LIB_JAR":
+                    ServerConstant.config.LIB_JAR.clear();
+                    ServerConstant.config.LIB_JAR.addAll(valueList);
+                    return true;
+
+                default:
+                    // Для других свойств сохраняем как обычную строку
+                    // (клиент сам решит, как обрабатывать точку с запятой)
+                    return ServerConstant.config.setProp(confPropName, confPropValue);
+            }
+        } catch (Exception e) {
+            System.err.println("Error handling list property '" + confPropName + "': " + e.getMessage());
+            return false;
+        }
+    }
+    /**
+     * Проверяет, является ли свойство списком
+     */
+    private boolean isListProperty(String propertyName) {
+        return propertyName.endsWith("_LIST") ||
+                propertyName.endsWith("_DIRS") ||
+                propertyName.equals("WEBAPP_DIR") ||
+                propertyName.equals("LIB_CSS") ||
+                propertyName.equals("LIB_JS") ||
+                propertyName.equals("LIB_JAR") ||
+                propertyName.equals("MIME_MAP");
+    }
     /**
      * @param confPropName
      * @param confPropValue

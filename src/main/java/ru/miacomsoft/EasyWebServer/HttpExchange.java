@@ -53,7 +53,13 @@ public class HttpExchange {
         }
         this.responseHeaders.put("Connection", "close");
         this.responseHeaders.put("Server", "EasyWebServer");
-        this.webappDir = ServerConstant.config.WEBAPP_DIR;
+
+        if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+            this.webappDir = ServerConstant.config.WEBAPP_DIRS.get(0);
+        } else {
+            this.webappDir = ServerConstant.config.WEBAPP_DIR;
+        }
+
         this.session = session;
     }
 

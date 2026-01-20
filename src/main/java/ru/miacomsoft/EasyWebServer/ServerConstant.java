@@ -32,6 +32,7 @@ public final class ServerConstant {
     public String FORWARD_DOUBLE_SLASH = "//";
     public String COMPONENT_PATH = "";
     public String WEBAPP_DIR = "www";
+    public List<String> WEBAPP_DIRS = new ArrayList<>();
     public String WEBAPP_SYSTEM_DIR = "www";
 
     public String DEFAULT_HOST = "0.0.0.0";
@@ -155,6 +156,36 @@ public final class ServerConstant {
         setIfPresent(jsonConfig, "FORWARD_SINGLE_SLASH", val -> FORWARD_SINGLE_SLASH = val);
         setIfPresent(jsonConfig, "FORWARD_DOUBLE_SLASH", val -> FORWARD_DOUBLE_SLASH = val);
         setIfPresent(jsonConfig, "COMPONENT_PATH", val -> COMPONENT_PATH = val);
+        setIfPresent(jsonConfig, "WEBAPP_DIR", val -> {
+            // Обработка нескольких каталогов
+            if (val.contains(";")) {
+                String[] dirs = val.split(";");
+                WEBAPP_DIRS.clear();
+                for (String dir : dirs) {
+                    String trimmedDir = dir.trim();
+                    if (!trimmedDir.isEmpty()) {
+                        if (!trimmedDir.contains("/") && !trimmedDir.contains("\\")) {
+                            // Относительный путь - добавляем SERVER_HOM
+                            trimmedDir = SERVER_HOM + File.separator + trimmedDir;
+                        }
+                        WEBAPP_DIRS.add(trimmedDir);
+                    }
+                }
+                // Для обратной совместимости сохраняем первый каталог в WEBAPP_DIR
+                if (!WEBAPP_DIRS.isEmpty()) {
+                    WEBAPP_DIR = WEBAPP_DIRS.get(0);
+                }
+            } else {
+                WEBAPP_DIRS.clear();
+                String trimmedVal = val.trim();
+                if (!trimmedVal.contains("/") && !trimmedVal.contains("\\")) {
+                    trimmedVal = SERVER_HOM + File.separator + trimmedVal;
+                }
+                WEBAPP_DIRS.add(trimmedVal);
+                WEBAPP_DIR = trimmedVal;
+            }
+        });
+
         setIfPresent(jsonConfig, "WEBAPP_DIR", val -> WEBAPP_DIR = val);
         setIfPresent(jsonConfig, "WEBAPP_SYSTEM_DIR", val -> WEBAPP_SYSTEM_DIR = val);
         setIfPresent(jsonConfig, "DEFAULT_HOST", val -> DEFAULT_HOST = val);

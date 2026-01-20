@@ -9,6 +9,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import ru.miacomsoft.EasyWebServer.util.structObject.JavaInnerClassObject;
 
+
 import java.io.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -560,24 +561,30 @@ public class ServerResourceHandler implements Runnable {
     }
 
     private void processMainRequest() {
-        String resourcePath = buildResourcePath();
-        File file = new File(resourcePath);
+        String resourcePath = null;
+        File file = null;
 
-        // Проверка существования файла в системном каталоге
-        if (!file.exists() && !ServerConstant.config.WEBAPP_SYSTEM_DIR.isEmpty()) {
-            resourcePath = ServerConstant.config.WEBAPP_SYSTEM_DIR + File.separator + (query.requestPath.replaceAll("/",File.separator));
-            file = new File(resourcePath);
+        // 1. Проверяем специальные ресурсы (Java классы, callback и т.д.)
+        if (ServerResource.pagesJavaInnerClass.containsKey(query.requestPath)) {
+            processJavaInnerClass();
+            return;
+        } else if (ServerResource.pagesListContent.containsKey(query.requestPath)) {
+            query.sendHtml(ServerResource.pagesListContent.get(query.requestPath).toString());
+            return;
+        } else if (ServerResource.pagesList.containsKey(query.requestPath)) {
+            resourcePath = buildResourcePathForPageList();
+            processPageListResource(resourcePath);
+            return;
+        }
+
+        // 2. Ищем файл во всех доступных каталогах
+        file = findFileInAllDirectories(query.requestPath);
+        if (file != null) {
             resourcePath = file.getAbsolutePath();
         }
 
-        // Обработка разных типов ресурсов
-        if (ServerResource.pagesJavaInnerClass.containsKey(query.requestPath)) {
-            processJavaInnerClass();
-        } else if (ServerResource.pagesListContent.containsKey(query.requestPath)) {
-            query.sendHtml(ServerResource.pagesListContent.get(query.requestPath).toString());
-        } else if (ServerResource.pagesList.containsKey(query.requestPath)) {
-            processPageListResource(resourcePath);
-        } else if (file.exists()) {
+        // 3. Обработка найденного файла
+        if (file != null && file.exists()) {
             processFileResource(file, resourcePath);
         } else {
             handleNotFound();
@@ -586,11 +593,14 @@ public class ServerResourceHandler implements Runnable {
 
     private String buildResourcePath() {
         if (query == null || query.requestPath == null) {
+            // Если указано несколько каталогов, используем первый
+            if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+                return Paths.get(ServerConstant.config.WEBAPP_DIRS.get(0)).toString();
+            }
             return Paths.get(ServerConstant.config.WEBAPP_DIR).toString();
         }
 
-        Path webappPath = Paths.get(ServerConstant.config.WEBAPP_DIR);
-
+        // Проверяем кэшированные файлы
         if (ServerResource.pagesListFile != null) {
             File cachedFile = ServerResource.pagesListFile.get(query.requestPath);
             if (cachedFile != null) {
@@ -598,6 +608,14 @@ public class ServerResourceHandler implements Runnable {
             }
         }
 
+        // Ищем файл во всех доступных каталогах
+        File file = findFileInAllDirectories(query.requestPath);
+        if (file != null) {
+            return file.getAbsolutePath();
+        }
+
+        // Если ничего не найдено, возвращаем путь из основного каталога
+        Path webappPath = Paths.get(ServerConstant.config.WEBAPP_DIR);
         return webappPath.resolve(query.requestPath).normalize().toString();
     }
 
@@ -622,11 +640,13 @@ public class ServerResourceHandler implements Runnable {
     private void processPageListResource(String resourcePath) {
         byte[] res = ServerResource.pagesList.get(query.requestPath).call(query);
         if (res != null) {
-            if ("html".equals(query.mimeType)) {
-                res = readResourceContent(new String(res), resourcePath,
-                        ServerConstant.config.WEBAPP_DIR, "");
+            if ("html".equals(query.mimeType) || query.mimeType != null && query.mimeType.contains("html")) {
+                // Определяем правильный корневой каталог для файла
+                String rootPath = getWebappDirForFile(new File(resourcePath));
+                res = readResourceContent(new String(res, StandardCharsets.UTF_8), resourcePath,
+                        rootPath, "");
             }
-            query.sendHtml(new String(res));
+            query.sendHtml(new String(res, StandardCharsets.UTF_8));
         }
     }
 
@@ -669,7 +689,8 @@ public class ServerResourceHandler implements Runnable {
 
     private Resource getCachedResource(File file, String resourcePath, String lastModified) {
         if (resources.get(resourcePath) == null || !resourcesDateTime.get(resourcePath).equals(lastModified)) {
-            Resource newRes = readResource(file, query, resourcePath, ServerConstant.config.WEBAPP_DIR, "");
+            String rootPath = getWebappDirForFile(file);
+            Resource newRes = readResource(file, query, resourcePath, rootPath, "");
             resources.put(resourcePath, newRes);
             resourcesDateTime.put(resourcePath, lastModified);
             return newRes;
@@ -682,15 +703,27 @@ public class ServerResourceHandler implements Runnable {
         String page404Path = ServerConstant.config.PAGE_404;
 
         if (page404Path.isEmpty()) {
-            query.sendHtml("Page not found");
-        } else {
-            File user404 = new File(ServerConstant.config.WEBAPP_DIR + page404Path);
-            File system404 = new File(ServerConstant.config.WEBAPP_SYSTEM_DIR + page404Path);
+            // Показываем детали поиска для отладки
+            StringBuilder errorMsg = new StringBuilder();
+            errorMsg.append("<h1>404 - Page not found</h1>");
+            errorMsg.append("<p><strong>Requested path:</strong> ").append(query.requestPath).append("</p>");
 
-            if (user404.exists()) {
-                query.sendFile(user404.getAbsolutePath());
-            } else if (system404.exists()) {
-                query.sendFile(system404.getAbsolutePath());
+            if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+                errorMsg.append("<p><strong>Searched in directories:</strong></p><ul>");
+                for (String dir : ServerConstant.config.WEBAPP_DIRS) {
+                    String fullPath = dir + File.separator + query.requestPath.replaceAll("/", File.separator);
+                    errorMsg.append("<li>").append(fullPath).append("</li>");
+                }
+                errorMsg.append("</ul>");
+            }
+
+            query.sendHtml(errorMsg.toString());
+        } else {
+            // Ищем 404 страницу во всех доступных каталогах
+            File found404 = findFileInAllDirectories(page404Path);
+
+            if (found404 != null) {
+                query.sendFile(found404.getAbsolutePath());
             } else {
                 query.sendHtml("Page not found");
             }
@@ -750,7 +783,7 @@ public class ServerResourceHandler implements Runnable {
                 }
             }
 
-            bout.write(elsDst.toString().getBytes());
+            bout.write(elsDst.toString().getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -981,7 +1014,7 @@ public class ServerResourceHandler implements Runnable {
      */
     public static String parseSubElementV2(Document doc, String path, String SelectorQuery) {
         try (InputStreamReader reader = new InputStreamReader(
-                new FileInputStream(doc.attr("rootPath") + path))) {
+                new FileInputStream(doc.attr("rootPath") + path), StandardCharsets.UTF_8)) {
             StringBuilder sb = new StringBuilder();
             int c;
             while ((c = reader.read()) > 0) {
@@ -1032,5 +1065,123 @@ public class ServerResourceHandler implements Runnable {
         }
         // Все остальное считаем бинарным
         return true;
+    }
+    /**
+     * Ищет файл по заданному пути во всех доступных каталогах
+     * @param requestPath путь к файлу
+     * @return найденный файл или null
+     */
+    private File findFileInAllDirectories(String requestPath) {
+        // 1. Поиск в основных каталогах
+        if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+            for (String webappDir : ServerConstant.config.WEBAPP_DIRS) {
+                String resourcePath = webappDir + File.separator +
+                        requestPath.replaceAll("/", File.separator);
+                File file = new File(resourcePath);
+                if (file.exists() && file.isFile()) {
+                    return file;
+                }
+            }
+        } else {
+            // Старая логика для обратной совместимости
+            String resourcePath = ServerConstant.config.WEBAPP_DIR + File.separator +
+                    requestPath.replaceAll("/", File.separator);
+            File file = new File(resourcePath);
+            if (file.exists() && file.isFile()) {
+                return file;
+            }
+        }
+
+        // 2. Поиск в системном каталоге
+        if (!ServerConstant.config.WEBAPP_SYSTEM_DIR.isEmpty()) {
+            String systemPath = ServerConstant.config.WEBAPP_SYSTEM_DIR + File.separator +
+                    requestPath.replaceAll("/", File.separator);
+            File systemFile = new File(systemPath);
+            if (systemFile.exists() && systemFile.isFile()) {
+                return systemFile;
+            }
+        }
+
+        return null;
+    }
+    /**
+     * Ищет файл во всех доступных каталогах
+     * @param fileName имя файла
+     * @return найденный файл или null
+     */
+    public static File findResourceFile(String fileName) {
+        // Проверяем кэшированные файлы
+        if (ServerResource.pagesListFile != null && ServerResource.pagesListFile.containsKey(fileName)) {
+            return ServerResource.pagesListFile.get(fileName);
+        }
+
+        // Ищем в основных каталогах
+        if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+            for (String webappDir : ServerConstant.config.WEBAPP_DIRS) {
+                File file = new File(webappDir + File.separator + fileName);
+                if (file.exists() && file.isFile()) {
+                    return file;
+                }
+            }
+        } else {
+            File file = new File(ServerConstant.config.WEBAPP_DIR + File.separator + fileName);
+            if (file.exists() && file.isFile()) {
+                return file;
+            }
+        }
+
+        // Ищем в системном каталоге
+        if (!ServerConstant.config.WEBAPP_SYSTEM_DIR.isEmpty()) {
+            File systemFile = new File(ServerConstant.config.WEBAPP_SYSTEM_DIR + File.separator + fileName);
+            if (systemFile.exists() && systemFile.isFile()) {
+                return systemFile;
+            }
+        }
+
+        return null;
+    }
+    private String buildResourcePathForPageList() {
+        // Для pagesList используем поиск по всем каталогам, как и для обычных файлов
+        File file = findFileInAllDirectories(query.requestPath);
+        if (file != null) {
+            return file.getAbsolutePath();
+        }
+
+        // Если файл не найден, возвращаем путь из первого каталога
+        if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+            return ServerConstant.config.WEBAPP_DIRS.get(0) + File.separator +
+                    query.requestPath.replaceAll("/", File.separator);
+        } else {
+            return ServerConstant.config.WEBAPP_DIR + File.separator +
+                    query.requestPath.replaceAll("/", File.separator);
+        }
+    }
+    /**
+     * Определяет, из какого каталога взят файл
+     */
+    private String getWebappDirForFile(File file) {
+        if (file == null) {
+            return ServerConstant.config.WEBAPP_DIR;
+        }
+
+        String filePath = file.getAbsolutePath();
+
+        // Проверяем WEBAPP_DIRS
+        if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
+            for (String webappDir : ServerConstant.config.WEBAPP_DIRS) {
+                if (filePath.startsWith(webappDir)) {
+                    return webappDir;
+                }
+            }
+        }
+
+        // Проверяем WEBAPP_SYSTEM_DIR
+        if (!ServerConstant.config.WEBAPP_SYSTEM_DIR.isEmpty() &&
+                filePath.startsWith(ServerConstant.config.WEBAPP_SYSTEM_DIR)) {
+            return ServerConstant.config.WEBAPP_SYSTEM_DIR;
+        }
+
+        // По умолчанию возвращаем WEBAPP_DIR
+        return ServerConstant.config.WEBAPP_DIR;
     }
 }

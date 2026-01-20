@@ -5987,3 +5987,116 @@ Cookie: session=8f6c65cc-3e5d-4690-be05-3c439f899c4b
 
 
 ------------------------------------
+------------------------------------
+11:14:13 20/01/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Pano360Git/viewer.html?photo=img/02.07.2025/PIC_20250702_101627.jpg
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=8f6c65cc-3e5d-4690-be05-3c439f899c4b
+
+
+------------------------------------
+------------------------------------
+11:57:44 20/01/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Pano360Git/img/02.07.2025/PIC_20250702_101627.jpg
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=8f6c65cc-3e5d-4690-be05-3c439f899c4b
+
+
+------------------------------------
+------------------------------------
+11:57:44 20/01/2026 (NSO +7)
+query.requestPath MyasnikovIA.asuscomm.com.ovpn
+query.requestParam {}
+GET /MyasnikovIA.asuscomm.com.ovpn HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "Windows"
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+Sec-Fetch-Site: none
+Sec-Fetch-Mode: navigate
+Sec-Fetch-User: ?1
+Sec-Fetch-Dest: document
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=8f6c65cc-3e5d-4690-be05-3c439f899c4b
+
+
+------------------------------------
+------------------------------------
+11:57:49 20/01/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/MyasnikovIA.asuscomm.com.ovpn
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=8f6c65cc-3e5d-4690-be05-3c439f899c4b
+
+
+------------------------------------
+------------------------------------
+12:06:56 20/01/2026 (NSO +7)
+query.requestPath MyasnikovIA.asuscomm.com.ovpn
+query.requestParam {}
+GET /MyasnikovIA.asuscomm.com.ovpn HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+Cache-Control: max-age=0
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "Windows"
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+Sec-Fetch-Site: none
+Sec-Fetch-Mode: navigate
+Sec-Fetch-User: ?1
+Sec-Fetch-Dest: document
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=8f6c65cc-3e5d-4690-be05-3c439f899c4b
+
+
+------------------------------------
