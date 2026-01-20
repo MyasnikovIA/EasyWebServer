@@ -27,8 +27,8 @@ public class Main {
             web.config("WEBAPP_DIR", "Y:\\files\\home\\EasyWebServerGit\\www;Y:\\files\\home\\storage\\downloads"); //   путь к статичным ресурсам сервера
         }
         if (os.equals("linux")) {
-            //web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/EasyWebServerGit/www;/data/data/com.termux/files/home/storage/downloads"); //   путь к статичным ресурсам сервера
-            web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/EasyWebServerGit/www"); //   путь к статичным ресурсам сервера
+            web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/EasyWebServerGit/www;/storage/emulated/0/Download/www"); //   путь к статичным ресурсам сервера
+            //web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/EasyWebServerGit/www"); //   путь к статичным ресурсам сервера
         }
         web.config("DEFAULT_HOST" , "0.0.0.0");
         web.config("DEFAULT_PORT" , "9092"); //  порт на котором будет работать сервер

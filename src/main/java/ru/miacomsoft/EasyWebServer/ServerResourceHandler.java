@@ -582,7 +582,7 @@ public class ServerResourceHandler implements Runnable {
         if (file != null) {
             resourcePath = file.getAbsolutePath();
         }
-
+        // System.out.println("query.requestPath: "+query.requestPath);
         // 3. Обработка найденного файла
         if (file != null && file.exists()) {
             processFileResource(file, resourcePath);
@@ -1075,8 +1075,8 @@ public class ServerResourceHandler implements Runnable {
         // 1. Поиск в основных каталогах
         if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
             for (String webappDir : ServerConstant.config.WEBAPP_DIRS) {
-                String resourcePath = webappDir + File.separator +
-                        requestPath.replaceAll("/", File.separator);
+                String resourcePath = webappDir + File.separator + requestPath.replaceAll("/", File.separator);
+                // System.out.println("findFileInAllDirectories: "+resourcePath);
                 File file = new File(resourcePath);
                 if (file.exists() && file.isFile()) {
                     return file;
