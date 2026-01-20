@@ -10,19 +10,27 @@ import java.net.URL;
 public class Main {
     public static void main(String[] args) {
         WebServer web = new WebServer(Main.class);
-        web.config("DATABASE_NAME" , "jdbc:postgresql://192.168.15.82:5432/Panorama360");
-        web.config("DATABASE_USER_NAME" , "**********");
-        web.config("DATABASE_USER_PASS" , "**********");
+        // web.initConfig(args[0]);
+        web.config("DATABASE_NAME" , "jdbc:postgresql://127.0.0.1:5432/Panorama360");
+        // web.config("DATABASE_USER_NAME" , "**********");
+        // web.config("DATABASE_USER_PASS" , "**********");
         web.config("LOGIN_PAGE" , "login.html"); //  Страница авторизации в БД переход приисходит если пользователь расконектился
         web.config("PAGE_404" , "page_404.html"); //  Страница 404 отсутствие содержимого
-        web.config("INDEX_PAGE" , "test.html");   // Путь стартовой страницы по умолчанию
-        web.config("DEBUG" , "true"); // включение режима отладки (страница будет пересобираться при каждом обращении)
+        web.config("INDEX_PAGE" , "index.html");   // Путь стартовой страницы по умолчанию
+        web.config("DEBUG" , "false"); // включение режима отладки (страница будет пересобираться при каждом обращении)
         web.config("CAHEBLE" , "true"); // Кэширование страниц (загрузка  страниц в оперативную память)
-        web.config("LENGTH_CAHE" , "test");  //Размер (байт) файла после которого отключается режим кэширования (если файл больше этого размера, тогда файл читается напрямую с жесткого диска)
+        // web.config("LENGTH_CAHE" , "test");  //Размер (байт) файла после которого отключается режим кэширования (если файл больше этого размера, тогда файл читается напрямую с жесткого диска)
         web.config("GZIPPABLE" , "false"); //  Сжатие статической страницы
-        web.config("WEBAPP_DIR" , "www"); //   путь к статичным ресурсам сервера
+
+        String os = web.getOS();
+        if (os.equals("windows")) {
+            web.config("WEBAPP_DIR", "Y:\\files\\home\\EasyWebServerGit\\www"); //   путь к статичным ресурсам сервера
+        }
+        if (os.equals("linux")) {
+            web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/EasyWebServerGit/www"); //   путь к статичным ресурсам сервера
+        }
         web.config("DEFAULT_HOST" , "0.0.0.0");
-        web.config("DEFAULT_PORT" , "9093"); //  порт на котором будет работать сервер
+        web.config("DEFAULT_PORT" , "9092"); //  порт на котором будет работать сервер
         web.config("APP_NAME" , "webpage"); //  Имя приложения (функции на SQL сервер будут иметь префикс этого имени)
         web.config("LOG_FILE" , "log.txt"); // путь к файлу логирования
         try {

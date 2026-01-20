@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -92,7 +93,51 @@ public class HttpExchange {
         }
         sendHtml(sb.toString());
     }
+    public void sendFile(File file) {
+        String filename = file.getName().toLowerCase();
+        String mimeType = ServerConstant.config.MIME_MAP.getOrDefault(
+                getFileExtension(filename),
+                "application/octet-stream"
+        );
+        sendFile(file, mimeType);
+    }
+    public void sendFile(File file, String contentType) {
+        try (InputStream in = new FileInputStream(file);
+             OutputStream out = socket.getOutputStream()) {
 
+            // Подготавливаем заголовки
+            ByteArrayOutputStream headers = new ByteArrayOutputStream();
+            headers.write("HTTP/1.1 200 OK\r\n".getBytes());
+            headers.write(("Content-Type: " + contentType + "\r\n").getBytes());
+            headers.write(("Content-Length: " + file.length() + "\r\n").getBytes());
+            headers.write("Accept-Ranges: bytes\r\n".getBytes());
+
+            // Для изображений добавляем кеширование
+            if (contentType.startsWith("image/")) {
+                headers.write("Cache-Control: public, max-age=86400\r\n".getBytes());
+            }
+
+            // Пользовательские заголовки
+            for (Map.Entry<String, String> entry : responseHeaders.entrySet()) {
+                headers.write((entry.getKey() + ": " + entry.getValue() + "\r\n").getBytes());
+            }
+
+            headers.write("\r\n".getBytes());
+
+            // Отправляем заголовки и файл
+            out.write(headers.toByteArray());
+
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) > 0) {
+                out.write(buffer, 0, bytesRead);
+            }
+            out.flush();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
     public boolean write(byte[] content) {
         try {
             socket.getOutputStream().write(content);
@@ -104,9 +149,15 @@ public class HttpExchange {
     }
 
     public void send(byte[] content) {
-        write(content);
+        // Для бинарного контента нужно отправлять с правильными заголовками
+        if (this.mimeType != null && this.mimeType.startsWith("text/")) {
+            // Текстовый контент - используем существующую логику
+            sendHtml(new String(content, StandardCharsets.UTF_8));
+        } else {
+            // Бинарный контент - отправляем с заголовками
+            sendResponse(content, false);
+        }
     }
-
     public void send(String content) {
         send(content.getBytes(Charset.forName("UTF-8")));
     }
@@ -151,17 +202,31 @@ public class HttpExchange {
     }
 
     public void sendByteFile(File file) {
-        try (InputStream in = new FileInputStream(file); OutputStream out = socket.getOutputStream()) {
+        try (InputStream in = new FileInputStream(file);
+             OutputStream out = socket.getOutputStream()) {
+
+            // Определяем MIME-тип по расширению файла
+            String fileExtension = getFileExtension(file.getName());
+            String contentType = ServerConstant.config.MIME_MAP.getOrDefault(
+                    fileExtension.toLowerCase(),
+                    "application/octet-stream"
+            );
+
+            // Отправляем заголовки
             out.write("HTTP/1.1 200 OK\r\n".getBytes());
-            out.write(("Content-Type: " + mimeType + "\r\n").getBytes());
+            out.write(("Content-Type: " + contentType + "\r\n").getBytes());
             out.write(("Content-Length: " + file.length() + "\r\n").getBytes());
+            out.write(("Accept-Ranges: bytes\r\n").getBytes());
+
+            // Добавляем кеширование для изображений
+            if (fileExtension.matches("(?i)(jpg|jpeg|png|gif|ico|svg|webp)")) {
+                out.write("Cache-Control: public, max-age=86400\r\n".getBytes());
+            }
 
             for (Map.Entry<String, String> entry : responseHeaders.entrySet()) {
                 out.write((entry.getKey() + ": " + entry.getValue() + "\r\n").getBytes());
             }
-
             out.write("\r\n".getBytes());
-
             byte[] buffer = new byte[4096];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) > 0) {
@@ -174,6 +239,53 @@ public class HttpExchange {
         }
     }
 
+    // Вспомогательный метод для получения расширения файла
+    private String getFileExtension(String filename) {
+        int dotIndex = filename.lastIndexOf('.');
+        return (dotIndex >= 0) ? filename.substring(dotIndex + 1) : "";
+    }
+    public void sendImageFile(File file) {
+        try (InputStream in = new FileInputStream(file);
+             OutputStream out = socket.getOutputStream()) {
+
+            String filename = file.getName().toLowerCase();
+            String contentType;
+
+            if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) {
+                contentType = "image/jpeg";
+            } else if (filename.endsWith(".png")) {
+                contentType = "image/png";
+            } else if (filename.endsWith(".gif")) {
+                contentType = "image/gif";
+            } else if (filename.endsWith(".webp")) {
+                contentType = "image/webp";
+            } else if (filename.endsWith(".svg")) {
+                contentType = "image/svg+xml";
+            } else {
+                contentType = "application/octet-stream";
+            }
+
+            // Отправляем заголовки
+            out.write("HTTP/1.1 200 OK\r\n".getBytes());
+            out.write(("Content-Type: " + contentType + "\r\n").getBytes());
+            out.write(("Content-Length: " + file.length() + "\r\n").getBytes());
+            out.write(("Accept-Ranges: bytes\r\n").getBytes());
+            out.write("Cache-Control: public, max-age=86400\r\n".getBytes());
+
+            out.write("\r\n".getBytes());
+
+            // Отправляем файл
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) > 0) {
+                out.write(buffer, 0, bytesRead);
+            }
+            out.flush();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
     public String readLine() {
         StringBuilder sb = new StringBuilder();
         int c;

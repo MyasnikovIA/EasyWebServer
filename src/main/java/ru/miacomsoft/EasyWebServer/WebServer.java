@@ -236,7 +236,51 @@ public class WebServer implements Runnable {
             }
         }
     }
+    /**
+     * Определяет тип операционной системы
+     * Возвращает: "windows", "linux", "mac", "solaris", "bsd", "aix", или "unknown"
+     */
+    public static String getOS() {
+        String osName = System.getProperty("os.name").toLowerCase();
 
+        if (osName.contains("win")) {
+            return "windows";
+        } else if (osName.contains("nix") || osName.contains("nux") || osName.contains("aix")) {
+            return "linux";
+        } else if (osName.contains("mac")) {
+            return "mac";
+        } else if (osName.contains("sunos") || osName.contains("solaris")) {
+            return "solaris";
+        } else if (osName.contains("bsd")) {
+            return "bsd";
+        } else {
+            return "unknown";
+        }
+    }
+
+    /**
+     * Проверяет, является ли ОС Windows
+     */
+    public static boolean isWindows() {
+        return getOS().equals("windows");
+    }
+
+    /**
+     * Проверяет, является ли ОС Linux
+     */
+    public static boolean isLinux() {
+        return getOS().equals("linux");
+    }
+
+    /**
+     * Проверяет, является ли ОС Unix-подобной (Linux, Mac, BSD, Solaris)
+     */
+    public static boolean isUnixLike() {
+        String os = getOS();
+        return os.equals("linux") || os.equals("mac") ||
+                os.equals("solaris") || os.equals("bsd") ||
+                os.equals("aix");
+    }
 }
 
 

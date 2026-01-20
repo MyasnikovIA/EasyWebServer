@@ -565,8 +565,9 @@ public class ServerResourceHandler implements Runnable {
 
         // Проверка существования файла в системном каталоге
         if (!file.exists() && !ServerConstant.config.WEBAPP_SYSTEM_DIR.isEmpty()) {
-            resourcePath = ServerConstant.config.WEBAPP_SYSTEM_DIR + "/" + query.requestPath;
+            resourcePath = ServerConstant.config.WEBAPP_SYSTEM_DIR + File.separator + (query.requestPath.replaceAll("/",File.separator));
             file = new File(resourcePath);
+            resourcePath = file.getAbsolutePath();
         }
 
         // Обработка разных типов ресурсов
@@ -584,9 +585,20 @@ public class ServerResourceHandler implements Runnable {
     }
 
     private String buildResourcePath() {
-        return ServerResource.pagesListFile.containsKey(query.requestPath)
-                ? ServerResource.pagesListFile.get(query.requestPath).getAbsolutePath()
-                : ServerConstant.config.WEBAPP_DIR + "/" + query.requestPath;
+        if (query == null || query.requestPath == null) {
+            return Paths.get(ServerConstant.config.WEBAPP_DIR).toString();
+        }
+
+        Path webappPath = Paths.get(ServerConstant.config.WEBAPP_DIR);
+
+        if (ServerResource.pagesListFile != null) {
+            File cachedFile = ServerResource.pagesListFile.get(query.requestPath);
+            if (cachedFile != null) {
+                return cachedFile.toPath().toString();
+            }
+        }
+
+        return webappPath.resolve(query.requestPath).normalize().toString();
     }
 
     private void processJavaInnerClass() {
@@ -626,28 +638,38 @@ public class ServerResourceHandler implements Runnable {
             return;
         }
 
-        if (file.length() > ServerConstant.config.LENGTH_CAHE) {
+        // ДЛЯ БИНАРНЫХ ФАЙЛОВ ИСПОЛЬЗУЕМ sendByteFile
+        if (file.length() > ServerConstant.config.LENGTH_CAHE || isBinaryFile(ext)) {
+            // Используем sendByteFile для бинарных файлов
             query.sendByteFile(file);
             return;
         }
 
+        // Только для текстовых файлов используем кэширование
         String lastModified = String.valueOf(file.lastModified());
         Resource res;
 
         if (!ServerConstant.config.DEBUG) {
             res = getCachedResource(file, resourcePath, lastModified);
         } else {
-            res = new Resource(readResource(file, query, resourcePath, ServerConstant.config.WEBAPP_DIR, ""));
+            res = readResource(file, query, resourcePath, ServerConstant.config.WEBAPP_DIR, "");
         }
 
-        query.sendHtml(new String(res.content));
+        query.mimeType = res.mimeType;
+
+        // Отправляем в зависимости от типа контента
+        if (res.isBinary) {
+            // Для бинарных файлов используем sendByteFile
+            query.sendByteFile(file);
+        } else {
+            // Для текстовых файлов используем sendHtml
+            query.sendHtml(new String(res.content, StandardCharsets.UTF_8));
+        }
     }
 
     private Resource getCachedResource(File file, String resourcePath, String lastModified) {
-        if (resources.get(resourcePath) == null ||
-                !resourcesDateTime.get(resourcePath).equals(lastModified)) {
-            Resource newRes = new Resource(readResource(file, query, resourcePath,
-                    ServerConstant.config.WEBAPP_DIR, ""));
+        if (resources.get(resourcePath) == null || !resourcesDateTime.get(resourcePath).equals(lastModified)) {
+            Resource newRes = readResource(file, query, resourcePath, ServerConstant.config.WEBAPP_DIR, "");
             resources.put(resourcePath, newRes);
             resourcesDateTime.put(resourcePath, lastModified);
             return newRes;
@@ -745,14 +767,18 @@ public class ServerResourceHandler implements Runnable {
      * @param fragmentName имя фрагмента (опционально)
      * @return байты файла
      */
-    private byte[] readResource(File file, HttpExchange query, String resourcePath, String rootPath, String fragmentName) {
+    private Resource readResource(File file, HttpExchange query, String resourcePath, String rootPath, String fragmentName) {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        String ext = getFileExt(resourcePath).toLowerCase();
+        boolean isBinary = isBinaryFile(ext);
+        String mimeType = getFileMime(resourcePath);
+
         try {
-            String ext = getFileExt(resourcePath).toLowerCase();
-            if ("html".equals(ext)) {
+            if ("html".equals(ext) && !isBinary) {
+                // Только HTML файлы парсим
                 Path path = Paths.get(resourcePath);
                 byte[] bytes = Files.readAllBytes(path);
-                Document doc = Jsoup.parse(new String(bytes));
+                Document doc = Jsoup.parse(new String(bytes, StandardCharsets.UTF_8));
                 Element els = doc.getElementsByTag("body").get(0);
                 doc.attr("doc_path", resourcePath);
                 doc.attr("rootPath", rootPath);
@@ -761,8 +787,9 @@ public class ServerResourceHandler implements Runnable {
                 doc.removeAttr("rootPath");
                 doc.getElementsByTag("body").get(0).replaceWith(els);
                 Element elsDst = doc.getElementsByTag("html").get(0);
-                bout.write(elsDst.toString().getBytes());
+                bout.write(elsDst.toString().getBytes(StandardCharsets.UTF_8));
             } else {
+                // Для всех других файлов просто читаем как есть
                 InputStream in = new FileInputStream(resourcePath);
                 byte[] bs = new byte[4096];
                 int lenReadByts;
@@ -774,7 +801,8 @@ public class ServerResourceHandler implements Runnable {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        return bout.toByteArray();
+
+        return new Resource(bout.toByteArray(), mimeType, isBinary);
     }
 
     /**
@@ -837,15 +865,24 @@ public class ServerResourceHandler implements Runnable {
     private static class Resource {
         public final byte[] content;
         public String mimeType;
+        public boolean isBinary;
 
         public Resource(byte[] content) {
             this.content = content;
             this.mimeType = "text/html";
+            this.isBinary = false;
         }
 
         public Resource(byte[] content, String mimeType) {
             this.content = content;
             this.mimeType = mimeType;
+            this.isBinary = false;
+        }
+
+        public Resource(byte[] content, String mimeType, boolean isBinary) {
+            this.content = content;
+            this.mimeType = mimeType;
+            this.isBinary = isBinary;
         }
     }
 
@@ -973,5 +1010,27 @@ public class ServerResourceHandler implements Runnable {
             }
             return sb.toString();
         }
+    }
+    /**
+     * Определяет, является ли файл бинарным (не текстовым)
+     */
+    private static boolean isBinaryFile(String extension) {
+        extension = extension.toLowerCase();
+        // Явно указываем текстовые типы
+        String[] textExtensions = {
+                "html", "htm", "css", "js", "json", "xml",
+                "txt", "csv", "md", "java", "php", "asp",
+                "aspx", "jsp", "py", "rb", "pl", "c", "cpp",
+                "h", "hpp", "sql", "ini", "cfg", "conf", "yml",
+                "yaml", "properties", "log", "bat", "sh", "ps1"
+        };
+
+        for (String textExt : textExtensions) {
+            if (textExt.equals(extension)) {
+                return false;
+            }
+        }
+        // Все остальное считаем бинарным
+        return true;
     }
 }

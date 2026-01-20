@@ -1,6 +1,9 @@
 # EasyWebServer
 **фреймворк EasyWebServer** - легковесный веб-сервер на Java с расширенными возможностями для создания веб-приложений, REST API и систем управления устройствами.
 
+# java -jar /data/data/com.termux/files/home/EasyWebServerGit/out/artifacts/EasyWebServer_jar/EasyWebServer.jar
+
+
 ## Основные возможности
 
 ### 1. **Веб-сервер с поддержкой HTTP/1.1**
@@ -42,13 +45,17 @@ public void onPage(HttpExchange query) {
 ### 5. **Компонентная система для UI**
 ```html
 <cmpDataset name="userData" query_type="sql">
-    <var name="user_id" srctype="session" default="0"/>
+    <![CDATA[
     SELECT * FROM users WHERE id = ${user_id}
+    ]]>
+    <var name="user_id" srctype="session" default="0"/>
 </cmpDataset>
 
 <cmpAction name="saveUser">
-    <var name="name" src="user_name"/>
+    <![CDATA[
     INSERT INTO users (name) VALUES (${name})
+    ]]>
+    <var name="name" src="user_name"/>
 </cmpAction>
 ```
 

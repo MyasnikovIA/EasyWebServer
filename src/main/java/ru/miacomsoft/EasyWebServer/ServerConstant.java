@@ -105,9 +105,11 @@ public final class ServerConstant {
             return;
         }
 
+        System.out.println("pathIniConfig: "+pathIniConfig);
         File configFile = new File(pathIniConfig);
         if (configFile.exists()) {
             String configContent = readConfigFile(configFile);
+            System.out.println("configContent: "+configContent);
             if (!configContent.isEmpty()) {
                 parseConfig(new JSONObject(configContent));
             }
