@@ -24,10 +24,10 @@ public class Main {
 
         String os = web.getOS();
         if (os.equals("windows")) {
-            web.config("WEBAPP_DIR", "Y:\\files\\home\\EasyWebServerGit\\www;Y:\\files\\home\\storage\\downloads"); //   путь к статичным ресурсам сервера
+            web.config("WEBAPP_DIR", "Y:\\files\\home\\www;Y:\\files\\home\\storage\\downloads"); //   путь к статичным ресурсам сервера
         }
         if (os.equals("linux")) {
-            web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/EasyWebServerGit/www;/storage/emulated/0/Download/www"); //   путь к статичным ресурсам сервера
+            web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/www;/storage/emulated/0/Download/www"); //   путь к статичным ресурсам сервера
             //web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/EasyWebServerGit/www"); //   путь к статичным ресурсам сервера
         }
         web.config("DEFAULT_HOST" , "0.0.0.0");
