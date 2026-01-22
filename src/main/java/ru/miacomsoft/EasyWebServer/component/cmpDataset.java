@@ -1,8 +1,5 @@
 package ru.miacomsoft.EasyWebServer.component;
 
-import ru.miacomsoft.EasyWebServer.HttpExchange;
-import ru.miacomsoft.EasyWebServer.ServerResourceHandler;
-import ru.miacomsoft.EasyWebServer.ServerConstant;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.jsoup.nodes.Attribute;
@@ -10,13 +7,13 @@ import org.jsoup.nodes.Attributes;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import ru.miacomsoft.EasyWebServer.HttpExchange;
+import ru.miacomsoft.EasyWebServer.ServerConstant;
+import ru.miacomsoft.EasyWebServer.ServerResourceHandler;
 
-import java.net.URLDecoder;
-import java.nio.charset.Charset;
 import java.sql.*;
 import java.util.*;
 
-import static ru.miacomsoft.EasyWebServer.JavaStrExecut.InstanceClassName;
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.getConnect;
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.procedureList;
 
@@ -81,7 +78,7 @@ public class cmpDataset extends Base {
         if (element.hasText()) {
             if (query_type.equals("java")) {
                 JSONObject infoCompile = new JSONObject();
-                if (!ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse, element.text().trim(), infoCompile)) {
+                if (!ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse, element.text().trim(), infoCompile)) {
                     this.removeAttr("style");
                     this.html(ru.miacomsoft.EasyWebServer.JavaStrExecut.parseErrorCompile(infoCompile));
                     return;

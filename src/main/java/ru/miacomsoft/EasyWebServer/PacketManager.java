@@ -1,6 +1,7 @@
 package ru.miacomsoft.EasyWebServer;
 
-import ru.miacomsoft.EasyWebServer.util.*;
+import ru.miacomsoft.EasyWebServer.util.onPage;
+import ru.miacomsoft.EasyWebServer.util.onTerminal;
 import ru.miacomsoft.EasyWebServer.util.queryType.*;
 import ru.miacomsoft.EasyWebServer.util.structObject.JavaInnerClassObject;
 import ru.miacomsoft.EasyWebServer.util.structObject.JavaTerminalClassObject;

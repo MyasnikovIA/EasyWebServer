@@ -11,9 +11,9 @@ public class Main {
     public static void main(String[] args) {
         WebServer web = new WebServer(Main.class);
         // web.initConfig(args[0]);
-        web.config("DATABASE_NAME" , "jdbc:postgresql://127.0.0.1:5432/Panorama360");
-        // web.config("DATABASE_USER_NAME" , "**********");
-        // web.config("DATABASE_USER_PASS" , "**********");
+        //web.config("DATABASE_NAME" , "jdbc:postgresql://192.168.15.8:5432/Panorama360");
+        //web.config("DATABASE_USER_NAME" , "XXXXXX");
+        //web.config("DATABASE_USER_PASS" , "XXXXXXX");
         web.config("LOGIN_PAGE" , "login.html"); //  Страница авторизации в БД переход приисходит если пользователь расконектился
         web.config("PAGE_404" , "page_404.html"); //  Страница 404 отсутствие содержимого
         web.config("INDEX_PAGE" , "index.html");   // Путь стартовой страницы по умолчанию
@@ -24,7 +24,7 @@ public class Main {
 
         String os = web.getOS();
         if (os.equals("windows")) {
-            web.config("WEBAPP_DIR", "Y:\\files\\home\\www;Y:\\files\\home\\storage\\downloads"); //   путь к статичным ресурсам сервера
+            web.config("WEBAPP_DIR", "Y:\\files\\home\\www;Y:\\files\\home\\storage\\downloads\\www"); //   путь к статичным ресурсам сервера
         }
         if (os.equals("linux")) {
             web.config("WEBAPP_DIR" , "/data/data/com.termux/files/home/www;/storage/emulated/0/Download/www"); //   путь к статичным ресурсам сервера

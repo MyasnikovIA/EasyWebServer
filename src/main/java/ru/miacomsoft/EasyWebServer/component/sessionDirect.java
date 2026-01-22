@@ -1,9 +1,8 @@
 package ru.miacomsoft.EasyWebServer.component;
 
-import ru.miacomsoft.EasyWebServer.HttpExchange;
 import org.json.JSONObject;
+import ru.miacomsoft.EasyWebServer.HttpExchange;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**

@@ -9,7 +9,6 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import ru.miacomsoft.EasyWebServer.util.structObject.JavaInnerClassObject;
 
-
 import java.io.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -21,7 +20,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -1044,6 +1046,7 @@ public class ServerResourceHandler implements Runnable {
             return sb.toString();
         }
     }
+
     /**
      * Определяет, является ли файл бинарным (не текстовым)
      */
@@ -1066,16 +1069,19 @@ public class ServerResourceHandler implements Runnable {
         // Все остальное считаем бинарным
         return true;
     }
+
     /**
      * Ищет файл по заданному пути во всех доступных каталогах
+     *
      * @param requestPath путь к файлу
      * @return найденный файл или null
      */
     private File findFileInAllDirectories(String requestPath) {
+        String requestPathLocal = requestPath.replace("/", File.separator);
         // 1. Поиск в основных каталогах
         if (!ServerConstant.config.WEBAPP_DIRS.isEmpty()) {
             for (String webappDir : ServerConstant.config.WEBAPP_DIRS) {
-                String resourcePath = webappDir + File.separator + requestPath.replaceAll("/", File.separator);
+                String resourcePath = webappDir + File.separator + requestPathLocal;
                 // System.out.println("findFileInAllDirectories: "+resourcePath);
                 File file = new File(resourcePath);
                 if (file.exists() && file.isFile()) {
@@ -1084,8 +1090,7 @@ public class ServerResourceHandler implements Runnable {
             }
         } else {
             // Старая логика для обратной совместимости
-            String resourcePath = ServerConstant.config.WEBAPP_DIR + File.separator +
-                    requestPath.replaceAll("/", File.separator);
+            String resourcePath = ServerConstant.config.WEBAPP_DIR + File.separator + requestPathLocal;
             File file = new File(resourcePath);
             if (file.exists() && file.isFile()) {
                 return file;
@@ -1094,8 +1099,7 @@ public class ServerResourceHandler implements Runnable {
 
         // 2. Поиск в системном каталоге
         if (!ServerConstant.config.WEBAPP_SYSTEM_DIR.isEmpty()) {
-            String systemPath = ServerConstant.config.WEBAPP_SYSTEM_DIR + File.separator +
-                    requestPath.replaceAll("/", File.separator);
+            String systemPath = ServerConstant.config.WEBAPP_SYSTEM_DIR + File.separator + requestPathLocal;
             File systemFile = new File(systemPath);
             if (systemFile.exists() && systemFile.isFile()) {
                 return systemFile;
@@ -1104,8 +1108,10 @@ public class ServerResourceHandler implements Runnable {
 
         return null;
     }
+
     /**
      * Ищет файл во всех доступных каталогах
+     *
      * @param fileName имя файла
      * @return найденный файл или null
      */
@@ -1140,6 +1146,7 @@ public class ServerResourceHandler implements Runnable {
 
         return null;
     }
+
     private String buildResourcePathForPageList() {
         // Для pagesList используем поиск по всем каталогам, как и для обычных файлов
         File file = findFileInAllDirectories(query.requestPath);
@@ -1156,6 +1163,7 @@ public class ServerResourceHandler implements Runnable {
                     query.requestPath.replaceAll("/", File.separator);
         }
     }
+
     /**
      * Определяет, из какого каталога взят файл
      */

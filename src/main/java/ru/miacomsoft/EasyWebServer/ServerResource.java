@@ -1,16 +1,9 @@
 package ru.miacomsoft.EasyWebServer;
 
-import ru.miacomsoft.EasyWebServer.util.onPage;
-import ru.miacomsoft.EasyWebServer.util.queryType.Get;
-import ru.miacomsoft.EasyWebServer.util.queryType.Put;
-import ru.miacomsoft.EasyWebServer.util.queryType.Post;
-import ru.miacomsoft.EasyWebServer.util.queryType.Delete;
-import ru.miacomsoft.EasyWebServer.util.onTerminal;
-import ru.miacomsoft.EasyWebServer.util.queryType.Head;
-import ru.miacomsoft.EasyWebServer.util.queryType.Patch;
-import ru.miacomsoft.EasyWebServer.util.queryType.Options;
-import ru.miacomsoft.EasyWebServer.util.queryType.Trace;
 import ru.miacomsoft.EasyWebServer.util.callbackType.CallbackPage;
+import ru.miacomsoft.EasyWebServer.util.onPage;
+import ru.miacomsoft.EasyWebServer.util.onTerminal;
+import ru.miacomsoft.EasyWebServer.util.queryType.*;
 import ru.miacomsoft.EasyWebServer.util.structObject.JavaInnerClassObject;
 import ru.miacomsoft.EasyWebServer.util.structObject.JavaTerminalClassObject;
 

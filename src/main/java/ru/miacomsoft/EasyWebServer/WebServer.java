@@ -15,8 +15,8 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static ru.miacomsoft.EasyWebServer.PacketManager.getWebPage;
 import static ru.miacomsoft.EasyWebServer.PacketManager.getPageJar;
+import static ru.miacomsoft.EasyWebServer.PacketManager.getWebPage;
 
 public class WebServer implements Runnable {
     public static CallbackProcedure callbackProcedure = null;
