@@ -1,9 +1,6 @@
 # EasyWebServer
 **фреймворк EasyWebServer** - легковесный веб-сервер на Java с расширенными возможностями для создания веб-приложений, REST API и систем управления устройствами.
 
-# java -jar /data/data/com.termux/files/home/EasyWebServerGit/out/artifacts/EasyWebServer_jar/EasyWebServer.jar
-
-
 ## Основные возможности
 
 ### 1. **Веб-сервер с поддержкой HTTP/1.1**
