@@ -1,6 +1,5 @@
 package ru.miacomsoft.EasyWebServer.component;
 
-
 import org.jsoup.nodes.Attribute;
 import org.jsoup.nodes.Attributes;
 import org.jsoup.nodes.Document;
@@ -9,25 +8,20 @@ import org.jsoup.select.Elements;
 import ru.miacomsoft.EasyWebServer.ServerConstant;
 
 import java.util.UUID;
-
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Base extends Element {
     public String name = "";
     public String id = "";
     public String cmptype = "base";
-// file:///D:/AppServ/var/www/jQuery-UI-Layout/demos/complex.html#
+
+    // Флаг для отслеживания, была ли уже добавлена библиотека main_js
+    private static final AtomicBoolean mainJsAdded = new AtomicBoolean(false);
 
     public Base(Document doc, Element element, String tag) {
         super(tag);
-        // if (doc.select("[cmp=\"jslib\"]").toString().length() == 0) {
-        //     Elements elements = doc.getElementsByTag("head");
-        //     elements.append("<link cmp=\"jslib\" href=\"/lib/jquery-easyui-1.11.0/themes/black/easyui.css\" rel=\"stylesheet\" type=\"text/css\"/>");
-        //     elements.append("<link cmp=\"jslib\" href=\"/lib/jquery-easyui-1.11.0/themes/icon.css\" rel=\"stylesheet\" type=\"text/css\"/>");
-        //     elements.append("<script cmp=\"jslib\" src=\"/lib/jquery-easyui-1.11.0/jquery.min.js\" type=\"text/javascript\"/>");
-        //     elements.append("<script cmp=\"jslib\" src=\"/lib/jquery-easyui-1.11.0/jquery.easyui.min.js\" type=\"text/javascript\"/>");
-        //     elements.append("<script cmp=\"jslib\" src=\"{component}/main_js\" type=\"text/javascript\"/>");
 
-        // }
+        // Добавляем общие библиотеки (CSS и JS)
         if (doc.select("[cmp=\"common\"]").toString().length() == 0) {
             Elements elements = doc.getElementsByTag("head");
             for (String cssPath : ServerConstant.config.LIB_CSS) {
@@ -39,6 +33,20 @@ public class Base extends Element {
                 elements.append("<script cmp=\"common\" src=\"" + jsPath + "\" type=\"text/javascript\"/>");
             }
         }
+
+        // Добавляем main_js библиотеку (только один раз)
+        if (!mainJsAdded.get()) {
+            synchronized (mainJsAdded) {
+                if (!mainJsAdded.get()) {
+                    Elements elements = doc.getElementsByTag("head");
+                    // Добавляем ссылку на скомпилированную main_js библиотеку
+                    elements.append("<script cmp=\"core\" src=\"{component}/main_js\" type=\"text/javascript\"></script>");
+                    mainJsAdded.set(true);
+                    System.out.println("Base: main_js библиотека добавлена в документ");
+                }
+            }
+        }
+
         if (element.hasAttr("name")) {
             this.attr("name", element.attr("name"));
         } else {
@@ -102,7 +110,6 @@ public class Base extends Element {
             value = arr.get(key);
             arr.remove(key);
         } else if (defaultValue != null) {
-
             value = defaultValue;
         } else {
             return null;
@@ -114,10 +121,6 @@ public class Base extends Element {
         return RemoveArrKeyRtrn(arr, key, "");
     }
 
-
-    public String getDomAttrRemove(String name, Attributes attrs) {
-        return getDomAttrRemove(name, null, attrs);
-    }
     public String getAttrRemove(String name, String value, Attributes attrs) {
         String val = "";
         if (attrs.hasKey(name)) {
@@ -157,11 +160,9 @@ public class Base extends Element {
         }
     }
 
-
     public void copyEventRemove(Attributes attrsSRC, Attributes attrsDst, boolean remove) {
         copyEventRemove(attrsSRC, attrsDst, remove, "on");
     }
-
 
     public void copyEventRemove(Attributes attrsSRC, Attributes attrsDst, boolean remove, String prefix) {
         for (Attribute attr : attrsSRC.asList()) {
@@ -204,4 +205,16 @@ public class Base extends Element {
         }
         return sb.toString();
     }
+    /**
+     * Метод для принудительного сброса кэша (можно вызывать при изменении конфигурации)
+     */
+    public static void clearCache() {
+        synchronized (main_js.class) {
+            main_js.JS_CACHE.clear();
+            main_js.cachedHash = null;
+            Base.mainJsAdded.set(false);
+            System.out.println("main_js: кэш сброшен");
+        }
+    }
+
 }
