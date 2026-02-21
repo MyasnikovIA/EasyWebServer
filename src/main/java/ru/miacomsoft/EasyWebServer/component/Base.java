@@ -22,27 +22,49 @@ public class Base extends Element {
         super(tag);
 
         // Добавляем общие библиотеки (CSS и JS)
-        if (doc.select("[cmp=\"common\"]").toString().length() == 0) {
+        if (doc.select("[cmp=\"common\"]").isEmpty()) {
             Elements elements = doc.getElementsByTag("head");
-            for (String cssPath : ServerConstant.config.LIB_CSS) {
-                if (cssPath.length() == 0) continue;
-                elements.append("<link cmp=\"common\" href=\"" + cssPath + "\" rel=\"stylesheet\" type=\"text/css\"/>");
-            }
-            for (String jsPath : ServerConstant.config.LIB_JS) {
-                if (jsPath.length() == 0) continue;
-                elements.append("<script cmp=\"common\" src=\"" + jsPath + "\" type=\"text/javascript\"/>");
+            if (!elements.isEmpty()) {
+                Element head = elements.first();
+                for (String cssPath : ServerConstant.config.LIB_CSS) {
+                    if (cssPath == null || cssPath.isEmpty()) continue;
+                    head.append("<link cmp=\"common\" href=\"" + cssPath + "\" rel=\"stylesheet\" type=\"text/css\"/>");
+                }
+                for (String jsPath : ServerConstant.config.LIB_JS) {
+                    if (jsPath == null || jsPath.isEmpty()) continue;
+                    head.append("<script cmp=\"common\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
+                }
             }
         }
 
-        // Добавляем main_js библиотеку (только один раз)
+        // Добавляем main_js библиотеку (только один раз и в самом начале head)
         if (!mainJsAdded.get()) {
             synchronized (mainJsAdded) {
                 if (!mainJsAdded.get()) {
                     Elements elements = doc.getElementsByTag("head");
-                    // Добавляем ссылку на скомпилированную main_js библиотеку
-                    elements.append("<script cmp=\"core\" src=\"{component}/main_js\" type=\"text/javascript\"></script>");
+                    if (!elements.isEmpty()) {
+                        Element head = elements.first();
+
+                        // Формируем правильный путь к main_js
+                        String mainJsPath = "{component}/main_js";
+
+                        // Добавляем ссылку на main_js библиотеку в самое начало head
+                        head.prepend("<script cmp=\"core\" src=\"" + mainJsPath + "\" type=\"text/javascript\"></script>");
+
+                        System.out.println("Base: main_js библиотека добавлена в документ по пути: " + mainJsPath);
+                    } else {
+                        // Если нет head, создаем его
+                        Element html = doc.getElementsByTag("html").first();
+                        if (html != null) {
+                            Element head = html.appendElement("head");
+                            String mainJsPath = "/ru/miacomsoft/EasyWebServer/component/main_js";
+                            head.append("<script cmp=\"core\" src=\"" + mainJsPath + "\" type=\"text/javascript\"></script>");
+                            System.out.println("Base: создан head и добавлена main_js библиотека");
+                        } else {
+                            System.err.println("Base: Warning - no head or html element found in document");
+                        }
+                    }
                     mainJsAdded.set(true);
-                    System.out.println("Base: main_js библиотека добавлена в документ");
                 }
             }
         }
@@ -63,7 +85,7 @@ public class Base extends Element {
         if (element.hasAttr("cmptype")) {
             this.attr("cmptype", element.attr("cmptype"));
         } else {
-            if (className.substring(0, 3).equals("cmp")) {
+            if (className.length() > 3 && className.substring(0, 3).equals("cmp")) {
                 this.attr("cmptype", className.substring(3));
             }
         }
@@ -85,8 +107,6 @@ public class Base extends Element {
             if (remove) {
                 arr.remove(key);
             }
-        } else {
-            return "";
         }
         return value;
     }
@@ -98,8 +118,6 @@ public class Base extends Element {
             if (remove) {
                 arr.remove(key);
             }
-        } else {
-            return "";
         }
         return value;
     }
@@ -125,7 +143,7 @@ public class Base extends Element {
         String val = "";
         if (attrs.hasKey(name)) {
             val = attrs.get(name);
-            if (val.length() == 0) {
+            if (val.isEmpty()) {
                 val = value;
             }
             if ("true".equals(val)) {
@@ -135,16 +153,15 @@ public class Base extends Element {
             return val;
         } else if (value != null) {
             return value;
-        } else {
-            return "";
         }
+        return "";
     }
 
     public String getDomAttrRemove(String name, String value, Attributes attrs) {
         String val = "";
         if (attrs.hasKey(name)) {
             val = attrs.get(name);
-            if (val.length() == 0) {
+            if (val.isEmpty()) {
                 val = value;
             }
             if ("true".equals(val)) {
@@ -155,9 +172,8 @@ public class Base extends Element {
             return " " + name + "=\"" + val + "\"";
         } else if (value != null) {
             return " " + name + "=\"" + value + "\"";
-        } else {
-            return "";
         }
+        return "";
     }
 
     public void copyEventRemove(Attributes attrsSRC, Attributes attrsDst, boolean remove) {
@@ -166,7 +182,8 @@ public class Base extends Element {
 
     public void copyEventRemove(Attributes attrsSRC, Attributes attrsDst, boolean remove, String prefix) {
         for (Attribute attr : attrsSRC.asList()) {
-            if (prefix.equals(attr.getKey().substring(0, prefix.length()))) {
+            if (attr.getKey().length() >= prefix.length() &&
+                    prefix.equals(attr.getKey().substring(0, prefix.length()))) {
                 attrsDst.add(attr.getKey(), attr.getValue());
                 if (remove) {
                     attrsSRC.remove(attr.getKey());
@@ -176,10 +193,10 @@ public class Base extends Element {
     }
 
     public String getJQueryEventString(String ctrlName, Attributes attrsSRC, boolean removekey) {
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         for (Attribute attr : attrsSRC.asList()) {
-            if ("on".equals(attr.getKey().substring(0, 2))) {
-                sb.append("\n.on('" + attr.getKey().substring(2) + "', function(event, ui){");
+            if (attr.getKey().length() >= 2 && "on".equals(attr.getKey().substring(0, 2))) {
+                sb.append("\n.on('").append(attr.getKey().substring(2)).append("', function(event, ui){");
                 sb.append(attr.getValue());
                 sb.append(";}) ");
                 if (removekey) {
@@ -194,20 +211,18 @@ public class Base extends Element {
     }
 
     public String getNotEventString(Attributes attrsSRC, boolean removekey) {
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         for (Attribute attr : attrsSRC.asList()) {
-            if (!"on".equals(attr.getKey().substring(0, 2))) {
+            if (attr.getKey().length() < 2 || !"on".equals(attr.getKey().substring(0, 2))) {
                 if (removekey) {
                     attrsSRC.remove(attr.getKey());
                 }
-                sb.append(attr.getKey() + "=\"" + attr.getValue().replaceAll("\"", "\\\"") + "\"");
+                sb.append(attr.getKey()).append("=\"").append(attr.getValue().replaceAll("\"", "\\\\\"")).append("\" ");
             }
         }
-        return sb.toString();
+        return sb.toString().trim();
     }
-    /**
-     * Метод для принудительного сброса кэша (можно вызывать при изменении конфигурации)
-     */
+
     public static void clearCache() {
         synchronized (main_js.class) {
             main_js.JS_CACHE.clear();
@@ -216,5 +231,4 @@ public class Base extends Element {
             System.out.println("main_js: кэш сброшен");
         }
     }
-
 }

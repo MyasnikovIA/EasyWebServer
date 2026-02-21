@@ -20,13 +20,33 @@ import java.util.concurrent.ConcurrentHashMap;
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.getConnect;
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.procedureList;
 
+@SuppressWarnings("unchecked")
 public class cmpDataset extends Base {
 
+    /**
+     * Конструктор с тремя параметрами (для совместимости с ServerResourceHandler.parseElementV2)
+     */
+    public cmpDataset(Document doc, Element element, String tag) {
+        super(doc, element, tag);
+        initialize(doc, element);
+    }
+
+    /**
+     * Конструктор с двумя параметрами (для обратной совместимости)
+     */
     public cmpDataset(Document doc, Element element) {
         super(doc, element, "textarea");
+        initialize(doc, element);
+    }
+
+    /**
+     * Общая логика инициализации
+     */
+    private void initialize(Document doc, Element element) {
         Attributes attrs = element.attributes();
         Attributes attrsDst = this.attributes();
         attrsDst.add("schema", "Dataset");
+
         String name = attrs.get("name");
         this.attr("name", name);
         attrsDst.add("name", name);
@@ -38,30 +58,92 @@ public class cmpDataset extends Base {
             query_type = element.attributes().get("query_type");
         }
 
-        String functionName = ((doc.attr("doc_path").substring(0, doc.attr("doc_path").length() - 5)
-                .substring(doc.attr("rootPath").length())).replaceAll("/", "_") + "___" +
-                element.attr("name")).toLowerCase();
+        // Формируем имя функции
+        String docPath = doc.attr("doc_path");
+        String rootPath = doc.attr("rootPath");
+        String functionName = generateFunctionName(docPath, rootPath, name);
+
+        System.out.println("📌 Generated dataset function name: " + functionName);
 
         this.attr("style", "display:none");
         this.attr("dataset_name", functionName);
         this.attr("name", element.attr("name"));
 
+        // Собираем переменные и разделяем before блок и основной запрос
         StringBuffer jsonVar = new StringBuffer();
         ArrayList<String> jarResourse = new ArrayList<String>();
         ArrayList<String> importPacket = new ArrayList<String>();
 
+        String beforeCode = "";
+        String mainQuery = "";
+
+        // Сначала ищем тег <before>
+        Elements beforeElements = element.getElementsByTag("before");
+        if (!beforeElements.isEmpty()) {
+            beforeCode = beforeElements.first().text().trim();
+            System.out.println("📝 Before block found: " + beforeCode.substring(0, Math.min(50, beforeCode.length())) + "...");
+        }
+
+        // Получаем основной текст элемента (CDATA с SQL запросом)
+        if (element.hasText()) {
+            mainQuery = element.text().trim();
+
+            // Если нашли before блок, удаляем его из mainQuery
+            if (!beforeCode.isEmpty()) {
+                // Разные варианты поиска before блока в тексте
+                String beforeCodeLower = beforeCode.toLowerCase();
+                String mainQueryLower = mainQuery.toLowerCase();
+
+                // Ищем по ключевым словам Declare/BEGIN/END
+                int declarePos = mainQueryLower.indexOf("declare");
+                int beginPos = mainQueryLower.indexOf("begin");
+                int endPos = mainQueryLower.indexOf("end;");
+
+                if (declarePos >= 0 && endPos > declarePos) {
+                    // Нашли完整的 PL/pgSQL блок, удаляем его
+                    int blockEnd = endPos + 4; // "end;".length()
+                    if (blockEnd < mainQuery.length()) {
+                        mainQuery = mainQuery.substring(blockEnd).trim();
+                    } else {
+                        mainQuery = "";
+                    }
+                } else {
+                    // Если не нашли по ключевым словам, удаляем текст before блока
+                    int beforePos = mainQueryLower.indexOf(beforeCodeLower);
+                    if (beforePos >= 0) {
+                        mainQuery = mainQuery.substring(0, beforePos) +
+                                mainQuery.substring(beforePos + beforeCode.length());
+                    }
+                }
+            }
+
+            // Очищаем mainQuery от лишних символов
+            mainQuery = mainQuery.trim();
+
+            // Убираем точку с запятой в конце
+            if (mainQuery.endsWith(";")) {
+                mainQuery = mainQuery.substring(0, mainQuery.length() - 1);
+            }
+
+            if (!mainQuery.isEmpty()) {
+                System.out.println("📝 Main query after cleanup: " + mainQuery.substring(0, Math.min(50, mainQuery.length())) + "...");
+            }
+        }
+
+        // Обрабатываем остальные дочерние элементы (import, var)
         for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
             Element itemElement = element.child(numChild);
+            String tagName = itemElement.tag().toString().toLowerCase();
             Attributes attrsItem = itemElement.attributes();
 
-            if (itemElement.tag().toString().toLowerCase().indexOf("import") != -1) {
+            if (tagName.contains("import")) {
                 if (attrsItem.hasKey("path")) {
                     jarResourse.add(attrsItem.get("path"));
                 }
                 if (attrsItem.hasKey("packet")) {
                     importPacket.add(attrsItem.get("packet"));
                 }
-            } else if (itemElement.tag().toString().toLowerCase().indexOf("var") != -1) {
+            } else if (tagName.contains("var")) {
                 String nameItem = attrsItem.get("name");
                 String src = RemoveArrKeyRtrn(attrsItem, "src", nameItem);
                 String srctype = RemoveArrKeyRtrn(attrsItem, "srctype", "var");
@@ -72,7 +154,8 @@ public class cmpDataset extends Base {
                 jsonVar.append("'src':'" + src + "',");
                 jsonVar.append("'srctype':'" + srctype + "'");
                 if (len.length() > 0) jsonVar.append(",'len':'" + len + "'");
-                if (defaultVal.length() > 0) jsonVar.append(",'defaultVal':'" + defaultVal.replaceAll("'", "\\\\'") + "'");
+                if (defaultVal.length() > 0)
+                    jsonVar.append(",'defaultVal':'" + defaultVal.replaceAll("'", "\\\\'") + "'");
                 jsonVar.append("},");
             }
         }
@@ -86,125 +169,238 @@ public class cmpDataset extends Base {
         this.attr("query_type", query_type);
         this.attr("db", db);
 
-        if (element.hasText()) {
-            if (query_type.equals("java")) {
-                JSONObject infoCompile = new JSONObject();
-                if (!ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse,
-                        element.text().trim(), infoCompile)) {
-                    this.removeAttr("style");
-                    this.html(JavaStrExecut.parseErrorCompile(infoCompile));
-                    return;
-                }
-            } else if (query_type.equals("sql")) {
-                createSQL(ServerConstant.config.APP_NAME + "_" + functionName, this, element);
+        // Получаем список переменных из JSON
+        List<String> varsArr = varsArrFromJson(jsonVarStr);
+
+        // Обрабатываем Java код
+        if (query_type.equals("java")) {
+            JSONObject infoCompile = new JSONObject();
+            if (!ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse,
+                    mainQuery, infoCompile)) {
+                this.removeAttr("style");
+                this.html(JavaStrExecut.parseErrorCompile(infoCompile));
+                return;
             }
         }
+        // Обрабатываем SQL
+        else if (query_type.equals("sql") && !mainQuery.isEmpty()) {
+            createSQLFunction(ServerConstant.config.APP_NAME + "_" + functionName, beforeCode, mainQuery, varsArr);
+        }
 
+        // Очищаем содержимое и удаляем обработанные атрибуты
         this.text("");
         for (Attribute attr : element.attributes().asList()) {
             if ("error".equals(attr.getKey())) continue;
             this.removeAttr(attr.getKey());
         }
 
+        // Добавляем JavaScript для инициализации (БЕЗ ИСПОЛЬЗОВАНИЯ $)
         StringBuffer sb = new StringBuffer();
-        sb.append("<script> $(function() {");
-        sb.append("  D3Api.setDatasetAuto('" + name + "');");
-        sb.append("}); </script>");
+        sb.append("<script>\n");
+        sb.append("  (function() {\n");
+        sb.append("    if (window.D3Api && typeof window.D3Api.setDatasetAuto === 'function') {\n");
+        sb.append("      window.D3Api.setDatasetAuto('" + name + "');\n");
+        sb.append("    } else {\n");
+        sb.append("      // Если D3Api еще не загружен, ждем загрузки страницы\n");
+        sb.append("      document.addEventListener('DOMContentLoaded', function() {\n");
+        sb.append("        if (window.D3Api) window.D3Api.setDatasetAuto('" + name + "');\n");
+        sb.append("      });\n");
+        sb.append("    }\n");
+        sb.append("  })();\n");
+        sb.append("</script>\n");
+
         Elements elements = doc.getElementsByTag("body");
-        elements.append(sb.toString());
-    }
-
-    private void processVariables(JSONObject vars, JSONObject varFun,
-                                  Map<String, Object> session,
-                                  JSONObject queryProperty) {
-        Iterator<String> keys = vars.keys();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            JSONObject varOne = vars.optJSONObject(key);
-            if (varOne == null) continue;
-
-            String srctype = varOne.optString("srctype", "var");
-
-            switch (srctype) {
-                case "var":
-                    // Переменные страницы
-                    if (queryProperty.has(key)) {
-                        varFun.put(key, queryProperty.optString(key));
-                    } else {
-                        varFun.put(key, varOne.optString("defaultVal", ""));
-                    }
-                    break;
-
-                case "ctrl":
-                    // Значения из контролов
-                    String ctrlValue = varOne.optString("value", "");
-                    varFun.put(key, ctrlValue);
-                    break;
-
-                case "caption":
-                    // Текст подписи контрола
-                    String caption = varOne.optString("caption", "");
-                    varFun.put(key + "_caption", caption);
-                    if (varOne.has("value")) {
-                        varFun.put(key, varOne.optString("value"));
-                    }
-                    break;
-
-                case "session":
-                    // Значения из сессии
-                    if (session.containsKey(key)) {
-                        varFun.put(key, session.get(key));
-                    } else {
-                        varFun.put(key, varOne.optString("defaultVal", ""));
-                    }
-                    break;
-
-                default:
-                    // Обычные переменные
-                    if (varOne.has("value")) {
-                        varFun.put(key, varOne.optString("value"));
-                    } else if (varOne.has("defaultVal")) {
-                        varFun.put(key, varOne.optString("defaultVal"));
-                    }
-            }
+        if (elements.size() > 0) {
+            elements.append(sb.toString());
         }
     }
 
+    /**
+     * Получение списка переменных из JSON строки
+     */
+    private List<String> varsArrFromJson(String jsonVarStr) {
+        List<String> varsArr = new ArrayList<>();
+        if (jsonVarStr != null && !jsonVarStr.isEmpty()) {
+            try {
+                String jsonStr = jsonVarStr.replace("'", "\"");
+                JSONObject vars = new JSONObject("{" + jsonStr + "}");
+                Iterator<String> keys = vars.keys();
+                while (keys.hasNext()) {
+                    varsArr.add(keys.next());
+                }
+            } catch (JSONException e) {
+                System.err.println("Error parsing vars JSON: " + e.getMessage());
+            }
+        }
+        return varsArr;
+    }
+
+    /**
+     * Генерация безопасного имени функции
+     */
+    private String generateFunctionName(String docPath, String rootPath, String elementName) {
+        String functionName;
+
+        if (docPath != null && !docPath.isEmpty() && docPath.length() > 5) {
+            String pathPart = docPath.substring(0, docPath.length() - 5);
+
+            if (rootPath != null && !rootPath.isEmpty() && pathPart.startsWith(rootPath)) {
+                pathPart = pathPart.substring(rootPath.length());
+            }
+
+            pathPart = pathPart.replaceAll("[\\\\/:*?\"<>|]", "_");
+            String cleanElementName = elementName.replaceAll("[\\\\/:*?\"<>|]", "_");
+            functionName = pathPart + "___" + cleanElementName;
+        } else {
+            String cleanElementName = elementName.replaceAll("[\\\\/:*?\"<>|]", "_");
+            functionName = "dataset___" + cleanElementName + "_" + System.currentTimeMillis();
+        }
+
+        functionName = functionName.replaceAll("[^a-zA-Z0-9_]", "_");
+        functionName = functionName.replaceAll("_+", "_");
+        functionName = functionName.replaceAll("^_+|_+$", "");
+        functionName = functionName.toLowerCase();
+
+        if (functionName.isEmpty()) {
+            functionName = "dataset_" + System.currentTimeMillis();
+        }
+
+        return functionName;
+    }
+
+    /**
+     * Создание SQL функции в PostgreSQL
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void createSQLFunction(String functionName, String beforeCode, String mainQuery, List<String> varsArr) {
+        if (procedureList.containsKey(functionName) && !ServerConstant.config.DEBUG) {
+            return;
+        }
+
+        Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME,
+                ServerConstant.config.DATABASE_USER_PASS);
+
+        if (conn == null) {
+            System.err.println("❌ Cannot connect to database to create function: " + functionName);
+            return;
+        }
+
+        // Формируем переменные для SQL функции
+        StringBuilder vars = new StringBuilder();
+        StringBuilder varsColl = new StringBuilder();
+
+        for (String varName : varsArr) {
+            if (vars.length() > 0) {
+                vars.append(", ");
+            }
+            vars.append(varName).append(" VARCHAR");
+
+            if (varsColl.length() > 0) {
+                varsColl.append(", ");
+            }
+            varsColl.append("?");
+        }
+
+        // Формируем SQL
+        StringBuilder sql = new StringBuilder();
+        sql.append("CREATE OR REPLACE FUNCTION ").append(functionName).append("(");
+        sql.append(vars.toString());
+        sql.append(")\n");
+        sql.append("RETURNS JSON AS\n");
+        sql.append("$$\n");
+
+        // Обрабатываем before блок
+        if (beforeCode != null && !beforeCode.isEmpty()) {
+            String beforeLower = beforeCode.toLowerCase();
+            int declarePos = beforeLower.indexOf("declare");
+            int beginPos = beforeLower.indexOf("begin", declarePos > 0 ? declarePos : 0);
+
+            if (declarePos >= 0 && beginPos > declarePos) {
+                // Есть DECLARE секция
+                String declareSection = beforeCode.substring(declarePos + "declare".length(), beginPos).trim();
+                if (!declareSection.isEmpty()) {
+                    sql.append("DECLARE\n");
+                    sql.append(declareSection).append("\n");
+                }
+
+                // Извлекаем тело BEGIN...END
+                int endPos = beforeLower.lastIndexOf("end;");
+                if (endPos > beginPos) {
+                    String beginSection = beforeCode.substring(beginPos + "begin".length(), endPos).trim();
+                    sql.append("BEGIN\n");
+                    sql.append(beginSection).append("\n");
+                } else {
+                    sql.append("BEGIN\n");
+                }
+            } else {
+                sql.append("BEGIN\n");
+                sql.append(beforeCode).append("\n");
+            }
+        } else {
+            sql.append("BEGIN\n");
+        }
+
+        // Добавляем RETURN с основным запросом
+        sql.append("    RETURN (\n");
+        sql.append("        SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)\n");
+        sql.append("        FROM (\n");
+        sql.append("            ").append(mainQuery).append("\n");
+        sql.append("        ) t\n");
+        sql.append("    );\n");
+        sql.append("END;\n");
+        sql.append("$$\n");
+        sql.append("LANGUAGE plpgsql;");
+
+        String createFunctionSQL = sql.toString();
+
+        System.out.println("📝 Creating function with SQL:\n" + createFunctionSQL);
+
+        try {
+            // Удаляем старую функцию
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("DROP FUNCTION IF EXISTS " + functionName + " CASCADE;");
+            }
+
+            // Создаем новую функцию
+            try (PreparedStatement createFunctionStatement = conn.prepareStatement(createFunctionSQL)) {
+                createFunctionStatement.execute();
+            }
+
+            String prepareCall = "SELECT " + functionName + "(" + varsColl + ");";
+
+            Map<String, Object> param = new ConcurrentHashMap<>();
+            param.put("prepareCall", prepareCall);
+            param.put("connect", conn);
+            param.put("SQL", createFunctionSQL);
+            param.put("function_name", functionName);
+            param.put("vars", varsArr);
+
+            System.out.println("✅ Function created: " + functionName);
+            procedureList.put(functionName, param);
+
+        } catch (SQLException e) {
+            System.err.println("❌ Error creating function " + functionName + ": " + e.getMessage());
+            System.err.println("Problematic SQL:\n" + createFunctionSQL);
+            e.printStackTrace();
+            throw new RuntimeException("Error creating database function: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Обработчик HTTP запроса для dataset
+     */
     public static byte[] onPage(HttpExchange query) {
-        query.mimeType = "application/javascript";
+        query.mimeType = "application/json";
         Map<String, Object> session = query.session;
         JSONObject queryProperty = query.requestParam;
         JSONObject vars;
 
         String postBodyStr = new String(query.postCharBody != null ? query.postCharBody : new char[0]);
 
-        if (postBodyStr.indexOf("{") == -1) {
+        try {
+            vars = new JSONObject(postBodyStr);
+        } catch (JSONException e) {
             vars = new JSONObject();
-            int indParam = 0;
-            for (String par : postBodyStr.split("&")) {
-                String[] val = par.split("=");
-                if (val.length == 2) {
-                    try {
-                        vars.put(val[0], val[1]);
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    indParam++;
-                    try {
-                        vars.put("param" + indParam, val[0]);
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        } else {
-            try {
-                vars = new JSONObject(postBodyStr);
-            } catch (JSONException e) {
-                vars = new JSONObject();
-                e.printStackTrace();
-            }
         }
 
         JSONObject result = new JSONObject();
@@ -215,17 +411,16 @@ public class cmpDataset extends Base {
                 queryProperty.optString("dataset_name", "")).toLowerCase();
 
         if (ServerResourceHandler.javaStrExecut.existJavaFunction(dataset_name)) {
+            // Java implementation
             JSONObject varFun = new JSONObject();
-
-            // Обработка переменных с учетом srctype
             Iterator<String> keys = vars.keys();
+
             while (keys.hasNext()) {
                 String key = keys.next();
                 JSONObject varOne = vars.optJSONObject(key);
                 if (varOne == null) continue;
 
                 String srctype = varOne.optString("srctype", "var");
-
                 switch (srctype) {
                     case "var":
                         if (queryProperty.has(key)) {
@@ -234,18 +429,6 @@ public class cmpDataset extends Base {
                             varFun.put(key, varOne.optString("defaultVal", ""));
                         }
                         break;
-
-                    case "ctrl":
-                        varFun.put(key, varOne.optString("value", ""));
-                        break;
-
-                    case "caption":
-                        varFun.put(key + "_caption", varOne.optString("caption", ""));
-                        if (varOne.has("value")) {
-                            varFun.put(key, varOne.optString("value"));
-                        }
-                        break;
-
                     case "session":
                         if (session.containsKey(key)) {
                             varFun.put(key, session.get(key));
@@ -253,248 +436,83 @@ public class cmpDataset extends Base {
                             varFun.put(key, varOne.optString("defaultVal", ""));
                         }
                         break;
-
                     default:
-                        if (varOne.has("value")) {
-                            varFun.put(key, varOne.optString("value"));
-                        } else if (varOne.has("defaultVal")) {
-                            varFun.put(key, varOne.optString("defaultVal"));
-                        }
+                        varFun.put(key, varOne.optString("value", varOne.optString("defaultVal", "")));
                 }
             }
 
             JSONArray dataRes = new JSONArray();
             JSONObject resFun = ServerResourceHandler.javaStrExecut.runFunction(dataset_name, varFun, session, dataRes);
 
-            JSONObject returnVar = new JSONObject();
-            keys = vars.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                JSONObject varOne = vars.optJSONObject(key);
-                if (varOne != null && varOne.has("len")) {
-                    varOne.put("value", varFun.opt(key));
-                    returnVar.put(key, varOne);
-                }
-            }
-
             if (resFun.has("JAVA_ERROR")) {
                 result.put("ERROR", resFun.get("JAVA_ERROR"));
             }
             result.put("data", dataRes);
-            result.put("vars_out", returnVar);
 
-        } else if (query_type.equals("sql")) {
+        } else if (query_type.equals("sql") && procedureList.containsKey(dataset_name)) {
+            // SQL implementation
             try {
-                String fullDatasetName = ServerConstant.config.APP_NAME + "_" +
-                        queryProperty.optString("dataset_name", "").toLowerCase();
+                ConcurrentHashMap<String, Object> param = (ConcurrentHashMap<String, Object>) procedureList.get(dataset_name);
+                String prepareCall = (String) param.get("prepareCall");
 
-                if (procedureList.containsKey(fullDatasetName)) {
-                    CallableStatement selectFunctionStatement = null;
-                    ConcurrentHashMap<String, Object> param = (ConcurrentHashMap<String, Object>)
-                            procedureList.get(fullDatasetName);
-                    String prepareCall = (String) param.get("prepareCall");
+                if (!session.containsKey("DATABASE")) {
+                    result.put("redirect", ServerConstant.config.LOGIN_PAGE);
+                    return result.toString().getBytes();
+                }
 
-                    if (session.containsKey("DATABASE")) {
-                        ConcurrentHashMap<String, Object> data_base =
-                                (ConcurrentHashMap<String, Object>) session.get("DATABASE");
-                        Connection conn = null;
+                ConcurrentHashMap<String, Object> data_base = (ConcurrentHashMap<String, Object>) session.get("DATABASE");
+                Connection conn = (Connection) data_base.get("CONNECT");
 
-                        if (data_base.containsKey("CONNECT")) {
-                            conn = (Connection) data_base.get("CONNECT");
-                        } else {
-                            conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
-                                    String.valueOf(data_base.get("DATABASE_USER_PASS")));
-                            data_base.put("CONNECT", conn);
-                        }
+                if (conn == null || conn.isClosed()) {
+                    conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
+                            String.valueOf(data_base.get("DATABASE_USER_PASS")));
+                    data_base.put("CONNECT", conn);
+                }
 
-                        if (conn == null) {
-                            result.put("redirect", ServerConstant.config.LOGIN_PAGE);
-                            return result.toString().getBytes();
-                        }
+                if (conn == null) {
+                    result.put("redirect", ServerConstant.config.LOGIN_PAGE);
+                    return result.toString().getBytes();
+                }
 
-                        selectFunctionStatement = conn.prepareCall(prepareCall);
-                    } else {
-                        result.put("redirect", ServerConstant.config.LOGIN_PAGE);
-                        return result.toString().getBytes();
-                    }
-
+                try (CallableStatement stmt = conn.prepareCall(prepareCall)) {
                     List<String> varsArr = (List<String>) param.get("vars");
 
-                    if (ServerConstant.config.DEBUG) {
-                        result.put("SQL", ((String) param.get("SQL")).split("\n"));
-                    }
+                    for (int i = 0; i < varsArr.size(); i++) {
+                        String varName = varsArr.get(i);
+                        JSONObject varObj = vars.optJSONObject(varName);
+                        String value = "";
 
-                    int ind = 0;
-                    for (String varNameOne : varsArr) {
-                        JSONObject varOne = vars.optJSONObject(varNameOne);
-                        if (varOne == null) continue;
-
-                        String valueStr = "";
-                        String srctype = varOne.optString("srctype", "var");
-
-                        switch (srctype) {
-                            case "session":
-                                if (session.get(varNameOne) == null) {
-                                    valueStr = varOne.optString("defaultVal", "");
-                                } else {
-                                    valueStr = String.valueOf(session.get(varNameOne));
-                                }
-                                break;
-
-                            case "var":
-                                if (queryProperty.has(varNameOne)) {
-                                    valueStr = queryProperty.optString(varNameOne);
-                                } else {
-                                    valueStr = varOne.optString("defaultVal", "");
-                                }
-                                break;
-
-                            case "ctrl":
-                                valueStr = varOne.optString("value", "");
-                                break;
-
-                            case "caption":
-                                valueStr = varOne.optString("caption", "");
-                                break;
-
-                            default:
-                                if (varOne.has("value")) {
-                                    valueStr = varOne.optString("value");
-                                } else if (varOne.has("defaultVal")) {
-                                    valueStr = varOne.optString("defaultVal");
-                                }
+                        if (varObj != null) {
+                            String srctype = varObj.optString("srctype", "var");
+                            if ("session".equals(srctype) && session.containsKey(varName)) {
+                                value = String.valueOf(session.get(varName));
+                            } else {
+                                value = varObj.optString("value", varObj.optString("defaultVal", ""));
+                            }
                         }
 
-                        ind++;
-                        selectFunctionStatement.setString(ind, valueStr);
+                        stmt.setString(i + 1, value);
                     }
 
-                    boolean hasResults = selectFunctionStatement.execute();
+                    boolean hasResults = stmt.execute();
                     while (hasResults) {
-                        ResultSet rs = selectFunctionStatement.getResultSet();
-                        if (rs != null) {
-                            if (rs.next()) {
+                        try (ResultSet rs = stmt.getResultSet()) {
+                            if (rs != null && rs.next()) {
                                 String jsonData = rs.getString(1);
                                 if (jsonData != null && !jsonData.isEmpty()) {
                                     result.put("data", new JSONArray(jsonData));
                                 }
                             }
-                            rs.close();
                         }
-                        hasResults = selectFunctionStatement.getMoreResults();
+                        hasResults = stmt.getMoreResults();
                     }
                 }
             } catch (Exception e) {
-                JSONArray errorArr = new JSONArray();
-                errorArr.put(e.getClass().getName() + ": " + e.getMessage());
-                result.put("ERROR", errorArr);
+                result.put("ERROR", e.getMessage());
                 e.printStackTrace();
             }
         }
 
-        result.put("vars", vars);
         return result.toString().getBytes();
-    }
-
-    private void createSQL(String functionName, Element elementThis, Element element) {
-        if (procedureList.containsKey(functionName) && !ServerConstant.config.DEBUG) {
-            return;
-        }
-
-        Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME,
-                ServerConstant.config.DATABASE_USER_PASS);
-        StringBuffer vars = new StringBuffer();
-        StringBuffer varsColl = new StringBuffer();
-        Attributes attrs = element.attributes();
-        Map<String, Object> param = new ConcurrentHashMap<String, Object>();
-        String language = RemoveArrKeyRtrn(attrs, "language", "plpgsql");
-        param.put("language", language);
-        List<String> varsArr = new ArrayList<>();
-        String befireCodeBloc = "";
-        String declareBlocText = "";
-
-        for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
-            Element itemElement = element.child(numChild);
-
-            if (itemElement.text().length() > 0) {
-                String beforeCode = itemElement.text().toLowerCase();
-                if (beforeCode.indexOf("declare") != -1) {
-                    declareBlocText = itemElement.text().substring(0, beforeCode.indexOf("begin"));
-                    befireCodeBloc = itemElement.text().substring(
-                            declareBlocText.length() + "begin".length(),
-                            beforeCode.lastIndexOf("end;"));
-                } else {
-                    befireCodeBloc = itemElement.text();
-                }
-                itemElement.text("");
-            } else if (itemElement.tag().toString().toLowerCase().indexOf("var") != -1) {
-                Attributes attrsItem = itemElement.attributes();
-                String nameItem = RemoveArrKeyRtrn(attrsItem, "name", "");
-                String len = RemoveArrKeyRtrn(attrsItem, "len", "");
-                String typeVar = "VARCHAR";
-
-                if (len.length() > 0) {
-                    typeVar = "VARCHAR(" + len + ")";
-                }
-                typeVar = RemoveArrKeyRtrn(attrsItem, "type", typeVar);
-                String defaultVal = RemoveArrKeyRtrn(attrsItem, "default", "");
-
-                vars.append(nameItem);
-                varsArr.add(nameItem);
-                vars.append(" IN ");
-                vars.append(typeVar);
-                vars.append(",");
-                varsColl.append("?,");
-            }
-        }
-
-        String jsonVarStr = vars.toString();
-        if (jsonVarStr.length() > 0) {
-            jsonVarStr = jsonVarStr.substring(0, jsonVarStr.length() - 1);
-        }
-        param.put("vars", varsArr);
-
-        String varsCollStr = varsColl.toString();
-        if (varsCollStr.length() > 0) {
-            varsCollStr = varsCollStr.substring(0, varsCollStr.length() - 1);
-        }
-
-        StringBuffer sb = new StringBuffer(
-                "CREATE OR REPLACE FUNCTION " + functionName + "(" + jsonVarStr + ")\n" +
-                        "RETURNS JSON AS\n" +
-                        "$$\n" +
-                        declareBlocText +
-                        "BEGIN\n" +
-                        befireCodeBloc +
-                        "\n RETURN (\n" +
-                        "SELECT COALESCE(json_agg(tempTab), '[]'::json) FROM (\n" +
-                        element.text().trim().replaceAll(";", " ") +
-                        "\n) tempTab\n" +
-                        ");\n" +
-                        "END;\n" +
-                        "$$\n" +
-                        "LANGUAGE " + language + ";"
-        );
-
-        try {
-            Statement stmt = conn.createStatement();
-            stmt.execute("DROP FUNCTION IF EXISTS " + functionName + ";");
-            PreparedStatement createFunctionStatement = conn.prepareStatement(sb.toString());
-            createFunctionStatement.execute();
-
-            String prepareCall = "select " + functionName + "(" + varsCollStr + ");";
-            CallableStatement selectFunctionStatement = conn.prepareCall(prepareCall);
-
-            param.put("selectFunctionStatement", selectFunctionStatement);
-            param.put("prepareCall", prepareCall);
-            param.put("connect", conn);
-            param.put("SQL", sb.toString());
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
-
-        procedureList.put(functionName, param);
     }
 }

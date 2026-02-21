@@ -3,8 +3,6 @@
 <head>
     <!--meta charset="UTF-8"-->
     <title>Title</title>
-    <script src="/lib/System/main.js" type="text/javascript"></script>
-
 </head>
 <body>
 
@@ -28,8 +26,11 @@
 <button onclick="myRun();">run</button>
 <script>
     function myRun() {
+        debugger
         setVar('inpArg', '123-входящая переменная');
+        debugger
         refreshDataSet('dsMyFun', function(data) {
+            debugger
              console.log('getVars()', getVars());
              console.log('data', data);
         });
