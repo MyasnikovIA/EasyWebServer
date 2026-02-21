@@ -1,19 +1,26 @@
 package ru.miacomsoft;
 
+
 import org.json.JSONObject;
 import ru.miacomsoft.EasyWebServer.HttpExchange;
 import ru.miacomsoft.EasyWebServer.util.queryType.Get;
-import ru.miacomsoft.EasyWebServer.util.queryType.Post;
+
 
 public class index {
-    @Post(url="index.java", ext="json")
-    public JSONObject saveData(HttpExchange query) {
-        System.out.println(query);
-        // обработка POST данных
-        return new JSONObject().put("result", "saved");
+    @Get(url="getPanoFromGrid.java",ext="json")
+    public JSONObject onPage(HttpExchange query) {
+        JSONObject obj = new JSONObject();
+        return obj;
     }
-    @Get(url="index.java", ext="json")
-    public JSONObject getData(HttpExchange query) {
-        return new JSONObject().put("status", "ok");
+
+    @Get(url="getPanoFromGrid.java",ext="json")
+    public JSONObject onPagePost(HttpExchange query, JSONObject objIn) {
+
+        query.responseHeaders.put("Access-Control-Allow-Origin","*");
+        query.responseHeaders.put("Access-Control-Allow-Credentials","true");
+        query.responseHeaders.put("Access-Control-Expose-Headers","FooBar");
+
+        JSONObject obj = new JSONObject();
+        return obj;
     }
 }

@@ -13,7 +13,6 @@ import java.net.URI;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static ru.miacomsoft.EasyWebServer.HttpExchange.parseErrorRunJava;
 
@@ -27,12 +26,12 @@ public class JavaStrExecut {
     /**
      * Места хронения скомпелированных классов и созданных экземпляров классов (CompileObject) по хэш коду класса
      */
-    public static Map<String, Object> InstanceClassHash = new ConcurrentHashMap<>();
+    public static HashMap<String, Object> InstanceClassHash = new HashMap<>();
 
     /**
      * Места хронения скомпелированных классов и созданных экземпляров классов (CompileObject) по читаемому имени класса
      */
-    public static Map<String, Object> InstanceClassName = new ConcurrentHashMap<>();
+    public static HashMap<String, Object> InstanceClassName = new HashMap<>();
 
 
     /**
@@ -43,7 +42,7 @@ public class JavaStrExecut {
         Object ObjectInstance = null; // Экземпляр класса
         String CodeText = null;       // Код программы
         String HashClass = null;      // Шеш кода программы
-        Map<String, Method> methods = new ConcurrentHashMap<>(); // список методов в компелированном классе
+        HashMap<String, Method> methods = new HashMap<>(); // список методов в компелированном классе
         long lastModified = 0;
     }
 
@@ -57,13 +56,13 @@ public class JavaStrExecut {
      * res.get("JAVA_CODE_SRC") - получение исходного кода
      * res.get("JAVA_ERROR") - получение объекта ошибки
      */
-    public Map<String, Object> exec(String code, Map<String, Object> vars, Map<String, Object> session) {
-        Map<String, Object> res = new ConcurrentHashMap<>();
+    public HashMap<String, Object> exec(String code, HashMap<String, Object> vars, HashMap<String, Object> session) {
+        HashMap<String, Object> res = new HashMap<>();
         if (session == null) {
-            session = new ConcurrentHashMap<>();
+            session = new HashMap<>();
         }
         if (vars == null) {
-            vars = new ConcurrentHashMap<>();
+            vars = new HashMap<>();
         }
         String src = "" +
                 "import java.util.HashMap; \n"
@@ -88,7 +87,7 @@ public class JavaStrExecut {
             }
             Class[] argTypes = new Class[]{HashMap.class, HashMap.class};             // перечисляем типы входящих переменных
             Method meth = compileObject.ClassNat.getMethod("evalFunc", argTypes);                                // получаем метод по имени и типам входящих переменных
-            res = (Map<String, Object>) meth.invoke(compileObject.ObjectInstance, vars, session); // запуск мектода на выполнение
+            res = (HashMap<String, Object>) meth.invoke(compileObject.ObjectInstance, vars, session); // запуск мектода на выполнение
             res.put("JAVA_CODE_SRC", src);
         } catch (ClassNotFoundException e) {
             res.put("JAVA_ERROR", e);
@@ -152,7 +151,7 @@ public class JavaStrExecut {
     public JSONObject runFunction(String nameFunction, JSONObject vars, Map<String, Object> session, JSONArray data) {
         JSONObject res = new JSONObject();
         if (session == null) {
-            session = new ConcurrentHashMap<>();
+            session = new HashMap<>();
         }
         if (vars == null) {
             vars = new JSONObject();
@@ -442,11 +441,11 @@ public class JavaStrExecut {
     }
 
     /**
-     * Функция разбора ошибки компиляции и визуализации в виде HTML страницы
-     *
-     * @param infoCompile
-     * @return
-     */
+    * Функция разбора ошибки компиляции и визуализации в виде HTML страницы
+    *
+    * @param infoCompile
+    * @return
+    */
     public static String parseErrorCompile(JSONObject infoCompile) {
         StringBuffer message = new StringBuffer("HTTP error compile Java file:");
         String srcCode = infoCompile.getString("src");
@@ -723,3 +722,4 @@ class SpecialClassLoader extends ClassLoader {
         byteCode = code;
     }
 }
+

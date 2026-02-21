@@ -19,9 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class HttpExchange {
     public Socket socket;
-    public final Map<String, Object> headers = new ConcurrentHashMap<>();
-    public final Map<String, String> cookie = new ConcurrentHashMap<>();
-    public final Map<String, String> responseHeaders = new ConcurrentHashMap<>();
+    public final Map<String, Object> headers = new HashMap<>();
+    public final Map<String, String> cookie = new HashMap<>();
+    public final Map<String, String> responseHeaders = new HashMap<>();
     public static final JSONObject SHARE = new JSONObject();
     public String sessionID = "";
     public Map<String, Object> session;
@@ -43,7 +43,7 @@ public class HttpExchange {
     public int countQuery = 0;
 
     /// PtP - объект для обмена данными между устройствами "точка ту точка"
-    public HttpExchange queryPtP = null;
+    public HttpExchange queryPtP=null;
 
     // Thread-safe shared resources
     public static final Map<String, HttpExchange> DevList = new ConcurrentHashMap<>();
@@ -105,7 +105,6 @@ public class HttpExchange {
         }
         sendHtml(sb.toString());
     }
-
     public void sendFile(File file) {
         String filename = file.getName().toLowerCase();
         String mimeType = ServerConstant.config.MIME_MAP.getOrDefault(
@@ -114,7 +113,6 @@ public class HttpExchange {
         );
         sendFile(file, mimeType);
     }
-
     public void sendFile(File file, String contentType) {
         try (InputStream in = new FileInputStream(file);
              OutputStream out = socket.getOutputStream()) {
@@ -152,7 +150,6 @@ public class HttpExchange {
             e.printStackTrace();
         }
     }
-
     public boolean write(byte[] content) {
         try {
             socket.getOutputStream().write(content);
@@ -173,7 +170,6 @@ public class HttpExchange {
             sendResponse(content, false);
         }
     }
-
     public void send(String content) {
         send(content.getBytes(Charset.forName("UTF-8")));
     }
@@ -260,7 +256,6 @@ public class HttpExchange {
         int dotIndex = filename.lastIndexOf('.');
         return (dotIndex >= 0) ? filename.substring(dotIndex + 1) : "";
     }
-
     public void sendImageFile(File file) {
         try (InputStream in = new FileInputStream(file);
              OutputStream out = socket.getOutputStream()) {
@@ -303,7 +298,6 @@ public class HttpExchange {
             e.printStackTrace();
         }
     }
-
     public String readLine() {
         StringBuilder sb = new StringBuilder();
         int c;

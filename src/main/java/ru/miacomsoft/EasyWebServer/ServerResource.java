@@ -9,17 +9,16 @@ import ru.miacomsoft.EasyWebServer.util.structObject.JavaTerminalClassObject;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class ServerResource {
-    public static Map<String, JavaInnerClassObject> pagesJavaInnerClass = new ConcurrentHashMap<>(10, (float) 0.5);
-    public static Map<String, JavaTerminalClassObject> pagesJavaTerminalClass = new ConcurrentHashMap<>(10, (float) 0.5);
-    public static Map<String, StringBuffer> pagesListContent = new ConcurrentHashMap<>(10, (float) 0.5);
-    public static Map<String, CallbackPage> pagesList = new ConcurrentHashMap<>(10, (float) 0.5);
-    public static Map<String, File> pagesListFile = new ConcurrentHashMap<>(10, (float) 0.5);
-    public static Map<String, Class> componentListClass = new ConcurrentHashMap<>(10, (float) 0.5);
+    public static HashMap<String, JavaInnerClassObject> pagesJavaInnerClass = new HashMap<String, JavaInnerClassObject>(10, (float) 0.5);
+    public static HashMap<String, JavaTerminalClassObject> pagesJavaTerminalClass = new HashMap<String, JavaTerminalClassObject>(10, (float) 0.5);
+    public static HashMap<String, StringBuffer> pagesListContent = new HashMap<String, StringBuffer>(10, (float) 0.5);
+    public static HashMap<String, CallbackPage> pagesList = new HashMap<String, CallbackPage>(10, (float) 0.5);
+    public static HashMap<String, File> pagesListFile = new HashMap<String, File>(10, (float) 0.5);
+    public static HashMap<String, Class> componentListClass = new HashMap<String, Class>(10, (float) 0.5);
     public static List<Class<?>> classes = new ArrayList<>();
 
     ///Массив с интерфейсами аннотаций

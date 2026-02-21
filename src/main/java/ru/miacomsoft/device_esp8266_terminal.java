@@ -8,6 +8,7 @@ import ru.miacomsoft.EasyWebServer.util.queryType.Get;
 import java.io.IOException;
 import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -135,12 +136,12 @@ dir:0
 
                 // Отправляем сообщение
                 querySend.write(message.getBytes());
-                // } catch (SocketException e) {
-                //     System.err.println("Socket error: " + e.getMessage());
-                //     break;
-                // } catch (IOException e) {
-                //     System.err.println("IO error: " + e.getMessage());
-                //     break;
+          // } catch (SocketException e) {
+          //     System.err.println("Socket error: " + e.getMessage());
+          //     break;
+          // } catch (IOException e) {
+          //     System.err.println("IO error: " + e.getMessage());
+          //     break;
             } catch (Exception e) {
                 System.err.println("Unexpected error: " + e.getMessage());
                 break;

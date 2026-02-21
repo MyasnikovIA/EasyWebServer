@@ -2,65 +2,31 @@ package ru.miacomsoft.EasyWebServer.component;
 
 import org.json.JSONObject;
 import ru.miacomsoft.EasyWebServer.HttpExchange;
+
 import java.util.Map;
 
 /**
- * Компонент для работы с сессионными переменными
- * Поддерживает srctype="session"
+ * Страница для сохранения произвольных объектов в пользовательской сессии
  */
 public class session {
     public static byte[] onPage(HttpExchange query) {
-        query.mimeType = "application/json";
+        query.mimeType = "application/javascript"; // Изменить mime ответа
         Map<String, Object> session = query.session;
-        JSONObject result = new JSONObject();
-
-        try {
-            String action = query.requestParam.optString("action", "");
-            JSONObject data = new JSONObject(new String(query.postCharBody));
-
-            switch (action) {
-                case "set":
-                    String name = data.optString("name", "");
-                    Object value = data.opt("value");
-                    if (!name.isEmpty()) {
-                        session.put(name, value);
-                        result.put("success", true);
-                        result.put("name", name);
-                        result.put("value", value);
-                    }
-                    break;
-
-                case "get":
-                    name = data.optString("name", "");
-                    if (session.containsKey(name)) {
-                        result.put(name, session.get(name));
-                    }
-                    break;
-
-                case "getAll":
-                    // Возвращаем все сессионные переменные
-                    for (Map.Entry<String, Object> entry : session.entrySet()) {
-                        result.put(entry.getKey(), entry.getValue());
-                    }
-                    break;
-
-                case "remove":
-                    name = data.optString("name", "");
-                    if (session.containsKey(name)) {
-                        session.remove(name);
-                        result.put("success", true);
-                    }
-                    break;
-
-                case "clear":
-                    session.clear();
-                    result.put("success", true);
-                    break;
+        JSONObject queryProperty = query.requestParam;
+        JSONObject vars = new JSONObject(new String(query.postCharBody));
+        JSONObject result = new JSONObject("{}");
+        if (queryProperty.has("set_session")) {
+            session.put(queryProperty.getString("set_session"), vars);
+        } else if (queryProperty.has("get_session")) {
+            String key = queryProperty.getString("get_session");
+            if (session.containsKey(key)) {
+                try {
+                    result = (JSONObject) session.get(key);
+                }catch (Exception e){
+                    result.put("Error",e.toString());
+                }
             }
-        } catch (Exception e) {
-            result.put("error", e.getMessage());
         }
-
         return result.toString().getBytes();
     }
 }

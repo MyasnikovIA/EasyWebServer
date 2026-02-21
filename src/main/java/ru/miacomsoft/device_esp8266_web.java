@@ -5,8 +5,6 @@ import ru.miacomsoft.EasyWebServer.HttpExchange;
 import ru.miacomsoft.EasyWebServer.util.queryType.Get;
 import ru.miacomsoft.EasyWebServer.util.queryType.Post;
 
-import java.util.concurrent.ConcurrentHashMap;
-
 public class device_esp8266_web {
     public  static JSONObject GLOBAL_LIST_DEVICE = new JSONObject();
     @Post(url="device_esp8266.java",ext="json")

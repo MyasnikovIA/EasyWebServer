@@ -1,5 +1,6 @@
 package ru.miacomsoft.EasyWebServer.component;
 
+
 import org.jsoup.nodes.Attribute;
 import org.jsoup.nodes.Attributes;
 import org.jsoup.nodes.Document;
@@ -8,67 +9,36 @@ import org.jsoup.select.Elements;
 import ru.miacomsoft.EasyWebServer.ServerConstant;
 
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
+
 
 public class Base extends Element {
     public String name = "";
     public String id = "";
     public String cmptype = "base";
-
-    // Флаг для отслеживания, была ли уже добавлена библиотека main_js
-    private static final AtomicBoolean mainJsAdded = new AtomicBoolean(false);
+// file:///D:/AppServ/var/www/jQuery-UI-Layout/demos/complex.html#
 
     public Base(Document doc, Element element, String tag) {
         super(tag);
+        // if (doc.select("[cmp=\"jslib\"]").toString().length() == 0) {
+        //     Elements elements = doc.getElementsByTag("head");
+        //     elements.append("<link cmp=\"jslib\" href=\"/lib/jquery-easyui-1.11.0/themes/black/easyui.css\" rel=\"stylesheet\" type=\"text/css\"/>");
+        //     elements.append("<link cmp=\"jslib\" href=\"/lib/jquery-easyui-1.11.0/themes/icon.css\" rel=\"stylesheet\" type=\"text/css\"/>");
+        //     elements.append("<script cmp=\"jslib\" src=\"/lib/jquery-easyui-1.11.0/jquery.min.js\" type=\"text/javascript\"/>");
+        //     elements.append("<script cmp=\"jslib\" src=\"/lib/jquery-easyui-1.11.0/jquery.easyui.min.js\" type=\"text/javascript\"/>");
+        //     elements.append("<script cmp=\"jslib\" src=\"{component}/main_js\" type=\"text/javascript\"/>");
 
-        // Добавляем общие библиотеки (CSS и JS)
-        if (doc.select("[cmp=\"common\"]").isEmpty()) {
+        // }
+        if (doc.select("[cmp=\"common\"]").toString().length() == 0) {
             Elements elements = doc.getElementsByTag("head");
-            if (!elements.isEmpty()) {
-                Element head = elements.first();
-                for (String cssPath : ServerConstant.config.LIB_CSS) {
-                    if (cssPath == null || cssPath.isEmpty()) continue;
-                    head.append("<link cmp=\"common\" href=\"" + cssPath + "\" rel=\"stylesheet\" type=\"text/css\"/>");
-                }
-                for (String jsPath : ServerConstant.config.LIB_JS) {
-                    if (jsPath == null || jsPath.isEmpty()) continue;
-                    head.append("<script cmp=\"common\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
-                }
+            for (String cssPath : ServerConstant.config.LIB_CSS) {
+                if (cssPath.length() == 0) continue;
+                elements.append("<link cmp=\"common\" href=\"" + cssPath + "\" rel=\"stylesheet\" type=\"text/css\"/>");
+            }
+            for (String jsPath : ServerConstant.config.LIB_JS) {
+                if (jsPath.length() == 0) continue;
+                elements.append("<script cmp=\"common\" src=\"" + jsPath + "\" type=\"text/javascript\"/>");
             }
         }
-
-        // Добавляем main_js библиотеку (только один раз и в самом начале head)
-        if (!mainJsAdded.get()) {
-            synchronized (mainJsAdded) {
-                if (!mainJsAdded.get()) {
-                    Elements elements = doc.getElementsByTag("head");
-                    if (!elements.isEmpty()) {
-                        Element head = elements.first();
-
-                        // Формируем правильный путь к main_js
-                        String mainJsPath = "{component}/main_js";
-
-                        // Добавляем ссылку на main_js библиотеку в самое начало head
-                        head.prepend("<script cmp=\"core\" src=\"" + mainJsPath + "\" type=\"text/javascript\"></script>");
-
-                        System.out.println("Base: main_js библиотека добавлена в документ по пути: " + mainJsPath);
-                    } else {
-                        // Если нет head, создаем его
-                        Element html = doc.getElementsByTag("html").first();
-                        if (html != null) {
-                            Element head = html.appendElement("head");
-                            String mainJsPath = "/ru/miacomsoft/EasyWebServer/component/main_js";
-                            head.append("<script cmp=\"core\" src=\"" + mainJsPath + "\" type=\"text/javascript\"></script>");
-                            System.out.println("Base: создан head и добавлена main_js библиотека");
-                        } else {
-                            System.err.println("Base: Warning - no head or html element found in document");
-                        }
-                    }
-                    mainJsAdded.set(true);
-                }
-            }
-        }
-
         if (element.hasAttr("name")) {
             this.attr("name", element.attr("name"));
         } else {
@@ -85,7 +55,7 @@ public class Base extends Element {
         if (element.hasAttr("cmptype")) {
             this.attr("cmptype", element.attr("cmptype"));
         } else {
-            if (className.length() > 3 && className.substring(0, 3).equals("cmp")) {
+            if (className.substring(0, 3).equals("cmp")) {
                 this.attr("cmptype", className.substring(3));
             }
         }
@@ -107,6 +77,8 @@ public class Base extends Element {
             if (remove) {
                 arr.remove(key);
             }
+        } else {
+            return "";
         }
         return value;
     }
@@ -118,6 +90,8 @@ public class Base extends Element {
             if (remove) {
                 arr.remove(key);
             }
+        } else {
+            return "";
         }
         return value;
     }
@@ -128,6 +102,7 @@ public class Base extends Element {
             value = arr.get(key);
             arr.remove(key);
         } else if (defaultValue != null) {
+
             value = defaultValue;
         } else {
             return null;
@@ -139,11 +114,15 @@ public class Base extends Element {
         return RemoveArrKeyRtrn(arr, key, "");
     }
 
+
+    public String getDomAttrRemove(String name, Attributes attrs) {
+        return getDomAttrRemove(name, null, attrs);
+    }
     public String getAttrRemove(String name, String value, Attributes attrs) {
         String val = "";
         if (attrs.hasKey(name)) {
             val = attrs.get(name);
-            if (val.isEmpty()) {
+            if (val.length() == 0) {
                 val = value;
             }
             if ("true".equals(val)) {
@@ -153,15 +132,16 @@ public class Base extends Element {
             return val;
         } else if (value != null) {
             return value;
+        } else {
+            return "";
         }
-        return "";
     }
 
     public String getDomAttrRemove(String name, String value, Attributes attrs) {
         String val = "";
         if (attrs.hasKey(name)) {
             val = attrs.get(name);
-            if (val.isEmpty()) {
+            if (val.length() == 0) {
                 val = value;
             }
             if ("true".equals(val)) {
@@ -172,18 +152,20 @@ public class Base extends Element {
             return " " + name + "=\"" + val + "\"";
         } else if (value != null) {
             return " " + name + "=\"" + value + "\"";
+        } else {
+            return "";
         }
-        return "";
     }
+
 
     public void copyEventRemove(Attributes attrsSRC, Attributes attrsDst, boolean remove) {
         copyEventRemove(attrsSRC, attrsDst, remove, "on");
     }
 
+
     public void copyEventRemove(Attributes attrsSRC, Attributes attrsDst, boolean remove, String prefix) {
         for (Attribute attr : attrsSRC.asList()) {
-            if (attr.getKey().length() >= prefix.length() &&
-                    prefix.equals(attr.getKey().substring(0, prefix.length()))) {
+            if (prefix.equals(attr.getKey().substring(0, prefix.length()))) {
                 attrsDst.add(attr.getKey(), attr.getValue());
                 if (remove) {
                     attrsSRC.remove(attr.getKey());
@@ -193,10 +175,10 @@ public class Base extends Element {
     }
 
     public String getJQueryEventString(String ctrlName, Attributes attrsSRC, boolean removekey) {
-        StringBuilder sb = new StringBuilder();
+        StringBuffer sb = new StringBuffer();
         for (Attribute attr : attrsSRC.asList()) {
-            if (attr.getKey().length() >= 2 && "on".equals(attr.getKey().substring(0, 2))) {
-                sb.append("\n.on('").append(attr.getKey().substring(2)).append("', function(event, ui){");
+            if ("on".equals(attr.getKey().substring(0, 2))) {
+                sb.append("\n.on('" + attr.getKey().substring(2) + "', function(event, ui){");
                 sb.append(attr.getValue());
                 sb.append(";}) ");
                 if (removekey) {
@@ -211,24 +193,15 @@ public class Base extends Element {
     }
 
     public String getNotEventString(Attributes attrsSRC, boolean removekey) {
-        StringBuilder sb = new StringBuilder();
+        StringBuffer sb = new StringBuffer();
         for (Attribute attr : attrsSRC.asList()) {
-            if (attr.getKey().length() < 2 || !"on".equals(attr.getKey().substring(0, 2))) {
+            if (!"on".equals(attr.getKey().substring(0, 2))) {
                 if (removekey) {
                     attrsSRC.remove(attr.getKey());
                 }
-                sb.append(attr.getKey()).append("=\"").append(attr.getValue().replaceAll("\"", "\\\\\"")).append("\" ");
+                sb.append(attr.getKey() + "=\"" + attr.getValue().replaceAll("\"", "\\\"") + "\"");
             }
         }
-        return sb.toString().trim();
-    }
-
-    public static void clearCache() {
-        synchronized (main_js.class) {
-            main_js.JS_CACHE.clear();
-            main_js.cachedHash = null;
-            Base.mainJsAdded.set(false);
-            System.out.println("main_js: кэш сброшен");
-        }
+        return sb.toString();
     }
 }
