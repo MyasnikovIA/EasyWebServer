@@ -19,8 +19,21 @@ import static ru.miacomsoft.EasyWebServer.PostgreQuery.procedureList;
 
 
 public class cmpDataset extends Base {
+
+    // Добавляем недостающий конструктор с тремя параметрами
+    public cmpDataset(Document doc, Element element, String tag) {
+        super(doc, element, tag); // Вызываем конструктор родительского класса
+        initialize(doc, element); // Выносим логику инициализации в отдельный метод
+    }
+
+    // Оставляем существующий конструктор для обратной совместимости
     public cmpDataset(Document doc, Element element) {
         super(doc, element, "teaxtarea");
+        initialize(doc, element);
+    }
+
+    // Выносим общую логику инициализации в отдельный метод
+    private void initialize(Document doc, Element element) {
         Attributes attrs = element.attributes();
         Attributes attrsDst = this.attributes();
         attrsDst.add("schema", "Dataset");
@@ -34,14 +47,28 @@ public class cmpDataset extends Base {
         if (element.attributes().hasKey("query_type")) {
             query_type = element.attributes().get("query_type");
         }
-        // String functionName = getMd5Hash(doc.attr("doc_path").replaceAll("/", "_")) + "#" + getMd5Hash(element.attr("name"));
-        String functionName = ((doc.attr("doc_path").substring(0, doc.attr("doc_path").length() - 5).substring(doc.attr("rootPath").length())).replaceAll("/", "_") + "___" + element.attr("name")).toLowerCase();
+
+        // Исправленное формирование имени функции
+        String docPath = doc.attr("doc_path");
+        String rootPath = doc.attr("rootPath");
+        String relativePath = "";
+        if (docPath.length() > rootPath.length() && docPath.length() > 5) {
+            relativePath = docPath.substring(rootPath.length(), docPath.length() - 5); // убираем .html/.java
+        }
+        // Заменяем все разделители путей на подчеркивания
+        relativePath = relativePath.replaceAll("[/\\\\]", "_");
+        // Убираем возможные лишние символы
+        relativePath = relativePath.replaceAll("[^a-zA-Z0-9_]", "");
+        String functionName = (relativePath + "___" + element.attr("name")).toLowerCase();
+
         this.attr("style", "display:none");
         this.attr("dataset_name", functionName);
         this.attr("name", element.attr("name"));
+
         StringBuffer jsonVar = new StringBuffer();
         ArrayList<String> jarResourse = new ArrayList<String>();
         ArrayList<String> importPacket = new ArrayList<String>();
+
         for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
             Element itemElement = element.child(numChild);
             Attributes attrsItem = itemElement.attributes();
@@ -82,14 +109,9 @@ public class cmpDataset extends Base {
                     this.removeAttr("style");
                     this.html(ru.miacomsoft.EasyWebServer.JavaStrExecut.parseErrorCompile(infoCompile));
                     return;
-                } else {
-                    //  HashMap<String, Object> vars = new HashMap<>();   // инициализация переменных
-                    //  HashMap<String, Object> res =ServerResourceHandler.javaStrExecut.runFunction(functionName,vars,null); // запуск выполнения скрипта
-                    //  System.out.println("==="+res.get("test")+"===");  // парсим результат
-                    //  System.out.println(functionName + "-------- Compile OK-------------");
                 }
             } else if (query_type.equals("sql")) {
-                createSQL(ServerConstant.config.APP_NAME+"_" + functionName, this, element);
+                createSQL(ServerConstant.config.APP_NAME + "_" + functionName, this, element);
             }
         }
         this.text("");
@@ -272,7 +294,7 @@ public class cmpDataset extends Base {
 
     private void createSQL(String functionName, Element elementThis, Element element) {
         if (procedureList.containsKey(functionName) && !ServerConstant.config.DEBUG) {
-            // Если функция уже созданна в БД и режим отладки отключен, тогда пропускаем создание новой функции
+            // Если функция уже создана в БД и режим отладки отключен, тогда пропускаем создание новой функции
             return;
         }
         Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
@@ -283,20 +305,42 @@ public class cmpDataset extends Base {
         String language = RemoveArrKeyRtrn(attrs, "language", "plpgsql");
         param.put("language", language);
         List<String> varsArr = new ArrayList<>();
-        String befireCodeBloc = "";
+        String beforeCodeBloc = "";
         String declareBlocText = "";
+
+        // Обрабатываем дочерние элементы
         for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
             Element itemElement = element.child(numChild);
-            if (itemElement.text().length() > 0) {  // если вложенный тэг имеет текст, тогда помещаем его в начала скрипта функции
-                String beforeCode = itemElement.text().toLowerCase();
-                if (beforeCode.indexOf("declare") != -1) { // переносим блок дикларации в заголовок функции
-                    declareBlocText = itemElement.text().substring(0, beforeCode.indexOf("begin"));
-                    befireCodeBloc = itemElement.text().substring(declareBlocText.length() + "begin".length(), beforeCode.lastIndexOf("end;"));
-                } else {
-                    befireCodeBloc = itemElement.text();
+            String tagName = itemElement.tag().toString().toLowerCase();
+
+            if (tagName.equals("before")) {
+                // Блок BEFORE содержит код до основного запроса
+                String beforeText = itemElement.text().trim();
+                if (beforeText.length() > 0) {
+                    // Убираем лишние пробелы и переносы строк
+                    beforeText = beforeText.replaceAll("\\s+", " ");
+
+                    // Проверяем наличие DECLARE блока
+                    String lowerBefore = beforeText.toLowerCase();
+                    if (lowerBefore.contains("declare") && lowerBefore.contains("begin")) {
+                        int declarePos = lowerBefore.indexOf("declare");
+                        int beginPos = lowerBefore.indexOf("begin", declarePos);
+
+                        if (declarePos >= 0 && beginPos > declarePos) {
+                            declareBlocText = beforeText.substring(declarePos + "declare".length(), beginPos).trim();
+                            beforeCodeBloc = beforeText.substring(beginPos + "begin".length()).trim();
+
+                            // Убираем END; если есть
+                            if (beforeCodeBloc.toLowerCase().endsWith("end;")) {
+                                beforeCodeBloc = beforeCodeBloc.substring(0, beforeCodeBloc.length() - 4).trim();
+                            }
+                        }
+                    } else {
+                        beforeCodeBloc = beforeText;
+                    }
                 }
-                itemElement.text("");
-            } else if (itemElement.tag().toString().toLowerCase().indexOf("var") != -1) {
+                itemElement.text(""); // Очищаем после обработки
+            } else if (tagName.indexOf("var") != -1) {
                 Attributes attrsItem = itemElement.attributes();
                 String nameItem = RemoveArrKeyRtrn(attrsItem, "name", "");
                 String len = RemoveArrKeyRtrn(attrsItem, "len", "");
@@ -305,7 +349,7 @@ public class cmpDataset extends Base {
                     typeVar = "VARCHAR(" + len + ")";
                 }
                 typeVar = RemoveArrKeyRtrn(attrsItem, "type", typeVar);
-                String defaultVal = RemoveArrKeyRtrn(attrsItem, "default", "");
+
                 vars.append(nameItem);
                 varsArr.add(nameItem);
                 vars.append(" IN ");
@@ -314,79 +358,92 @@ public class cmpDataset extends Base {
                 varsColl.append("?,");
             }
         }
+
+        // Убираем последнюю запятую
         String jsonVarStr = vars.toString();
-        if (jsonVarStr.length()>0) {
+        if (jsonVarStr.length() > 0) {
             jsonVarStr = jsonVarStr.substring(0, jsonVarStr.length() - 1);
         }
+
+        String varsCollStr = varsColl.toString();
+        if (varsCollStr.length() > 0) {
+            varsCollStr = varsCollStr.substring(0, varsCollStr.length() - 1);
+        }
+
         param.put("vars", varsArr);
-        StringBuffer sb = new StringBuffer("CREATE OR REPLACE FUNCTION " + functionName + "(" + jsonVarStr + ")\n" +
-                "RETURNS JSON AS\n" +
-                "$$\n" +
-                declareBlocText +
-                "BEGIN\n" +
-                befireCodeBloc +
-                "\n RETURN (\n" +
-                "SELECT COALESCE(json_agg(tempTab), '[]'::json) FROM (\n" +
-                element.text().trim().replaceAll(";"," ") +
-                ") tempTab\n" +
-                ");\n" +
-                "END;\n" +
-                "$$\n" +
-                "LANGUAGE " + language + ";");
+
+        // Получаем основной SQL запрос
+        String mainSql = element.text().trim();
+        // Убираем лишние точки с запятой
+        mainSql = mainSql.replaceAll(";+$", "");
+
+        // Формируем функцию
+        StringBuffer sb = new StringBuffer();
+        sb.append("CREATE OR REPLACE FUNCTION ").append(functionName).append("(");
+        sb.append(jsonVarStr);
+        sb.append(")\n");
+        sb.append("RETURNS JSON AS\n");
+        sb.append("$$\n");
+
+        if (declareBlocText.length() > 0) {
+            sb.append("DECLARE\n");
+            sb.append(declareBlocText).append("\n");
+        }
+
+        sb.append("BEGIN\n");
+
+        if (beforeCodeBloc.length() > 0) {
+            sb.append(beforeCodeBloc);
+            if (!beforeCodeBloc.endsWith(";") && !beforeCodeBloc.endsWith("\n")) {
+                sb.append(";\n");
+            } else {
+                sb.append("\n");
+            }
+        }
+
+        sb.append("RETURN (\n");
+        sb.append("SELECT COALESCE(json_agg(row_to_json(tempTab)), '[]'::json) FROM (\n");
+        sb.append(mainSql);
+        sb.append("\n) tempTab\n");
+        sb.append(");\n");
+        sb.append("END;\n");
+        sb.append("$$\n");
+        sb.append("LANGUAGE ").append(language).append(";");
+
+        String createFunctionSQL = sb.toString();
+        System.out.println("Creating function with SQL:\n" + createFunctionSQL);
+
         try {
             Statement stmt = conn.createStatement();
-            stmt.execute("DROP FUNCTION IF EXISTS " + functionName + ";");
-            PreparedStatement createFunctionStatement = conn.prepareStatement(sb.toString());
+
+            // Удаляем старую функцию если существует
+            try {
+                stmt.execute("DROP FUNCTION IF EXISTS " + functionName + " CASCADE;");
+            } catch (SQLException e) {
+                System.err.println("Error dropping function: " + e.getMessage());
+            }
+
+            // Создаем новую функцию
+            PreparedStatement createFunctionStatement = conn.prepareStatement(createFunctionSQL);
             createFunctionStatement.execute();
 
-            String varsCollStr = varsColl.toString();
-            if (varsCollStr.length()>0) {
-                varsCollStr = varsCollStr.substring(0, varsCollStr.length() - 1);
-            }
-            String prepareCall = "select " + functionName + "(" + varsCollStr + ");";
+            String prepareCall = "SELECT " + functionName + "(" + varsCollStr + ");";
             CallableStatement selectFunctionStatement = conn.prepareCall(prepareCall);
-            // нужно понять почему нет возможности использовать INOUT атребуты
-            //int ind=0;
-            //for (String varOne : varsArr) {
-            //    ind++;
-            //    selectFunctionStatement.registerOutParameter(ind, Types.VARCHAR);
-            //}
+
             param.put("selectFunctionStatement", selectFunctionStatement);
             param.put("prepareCall", prepareCall);
             param.put("connect", conn);
-            param.put("SQL", sb.toString());
+            param.put("SQL", createFunctionSQL);
+
+            procedureList.put(functionName, param);
+
+            System.out.println("Function " + functionName + " created successfully");
+
         } catch (SQLException e) {
+            System.err.println("Error creating function: " + e.getMessage());
+            System.err.println("SQL was:\n" + createFunctionSQL);
             throw new RuntimeException(e);
         }
-        procedureList.put(functionName, param);
     }
 
 }
-
-
-
-/*
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
-
-        String code = "public class HelloWorld {\n" +
-                "  public static void main(String[] args) {\n" +
-                "    System.out.println(\"Hello, world!\");\n" +
-                "  }\n" +
-                "}";
-
-        // Get a compiler
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-
-        // Compile the code
-        int result = compiler.run(null, null, null, code);
-        if (result != 0) {
-            System.out.println("Compilation failed");
-            return;
-        }
-
-        // Load and execute the compiled class
-        Class<?> helloWorldClass = Class.forName("HelloWorld");
-        helloWorldClass.getMethod("main", String[].class).invoke(null, (Object) null);
-
- */
