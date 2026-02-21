@@ -6,8 +6,8 @@ import ru.miacomsoft.EasyWebServer.HttpExchange;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class loginDataBase {
     public static byte[] onPage(HttpExchange query) {
@@ -20,7 +20,7 @@ public class loginDataBase {
         info.put("connect", false);
         Connection conn = null;
         if (!session.containsKey("DATABASE")) {
-            session.put("DATABASE", new HashMap<String, Object>());
+            session.put("DATABASE", new ConcurrentHashMap<String, Object>());
         }
         Map<String, Object> data_base = (Map<String, Object>) session.get("DATABASE");
         if (data_base.containsKey("CONNECT")) {

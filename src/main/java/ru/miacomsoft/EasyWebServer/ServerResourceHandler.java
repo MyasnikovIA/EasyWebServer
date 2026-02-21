@@ -21,9 +21,9 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -51,17 +51,17 @@ public class ServerResourceHandler implements Runnable {
     /**
      * Кэш статических ресурсов (HTML, CSS, JS).
      */
-    private final Map<String, Resource> resources = new HashMap<>();
+    private final Map<String, Resource> resources = new ConcurrentHashMap<>();
 
     /**
      * Хранит дату последней модификации файлов.
      */
-    private final Map<String, String> resourcesDateTime = new HashMap<>();
+    private final Map<String, String> resourcesDateTime = new ConcurrentHashMap<>();
 
     /**
      * Список активных сессий.
      */
-    public static HashMap<String, HashMap<String, Object>> sessionList = new HashMap<>();
+    public static Map<String, Map<String, Object>> sessionList = new ConcurrentHashMap<>();
 
     /**
      * Утилита для выполнения Java-кода из строки.
@@ -846,7 +846,7 @@ public class ServerResourceHandler implements Runnable {
      * @param sessionKey ID сессии
      * @return объект сессии
      */
-    public static HashMap<String, Object> getSession(String sessionKey) {
+    public static Map<String, Object> getSession(String sessionKey) {
         return sessionList.get(sessionKey);
     }
 
@@ -856,15 +856,15 @@ public class ServerResourceHandler implements Runnable {
      * @param httpExchange текущий запрос
      * @return объект сессии
      */
-    public static HashMap<String, Object> getSession(HttpExchange httpExchange) {
-        HashMap<String, Object> userSession;
+    public static Map<String, Object> getSession(HttpExchange httpExchange) {
+        Map<String, Object> userSession;
         if (httpExchange.sessionID.isEmpty()) {
             UUID uuid = UUID.randomUUID();
             httpExchange.sessionID = uuid.toString();
             httpExchange.responseHeaders.put("Set-Cookie", "session=" + uuid + "; debug=" + ServerConstant.config.DEBUG + ";");
         }
         if (!sessionList.containsKey(httpExchange.sessionID)) {
-            userSession = new HashMap<>();
+            userSession = new ConcurrentHashMap<>();
             sessionList.put(httpExchange.sessionID, userSession);
         } else {
             userSession = sessionList.get(httpExchange.sessionID);

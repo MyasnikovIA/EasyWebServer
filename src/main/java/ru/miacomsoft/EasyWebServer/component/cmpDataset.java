@@ -13,6 +13,7 @@ import ru.miacomsoft.EasyWebServer.ServerResourceHandler;
 
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.getConnect;
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.procedureList;
@@ -176,11 +177,11 @@ public class cmpDataset extends Base {
             try {
                 if (procedureList.containsKey(dataset_name)) {
                     CallableStatement selectFunctionStatement = null;
-                    HashMap<String, Object> param = procedureList.get(dataset_name);
+                    ConcurrentHashMap<String, Object> param = (ConcurrentHashMap<String, Object>) procedureList.get(dataset_name);
                     String prepareCall = (String) param.get("prepareCall");
                     if (session.containsKey("DATABASE")) {
                         // Если в сессии есть информация о подключении к БД, тогда подключаемся
-                        HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
+                        ConcurrentHashMap<String, Object> data_base = (ConcurrentHashMap<String, Object>) session.get("DATABASE");
                         Connection conn = null;
                         if (data_base.containsKey("CONNECT")) {
                             conn = (Connection) data_base.get("CONNECT");
@@ -279,7 +280,7 @@ public class cmpDataset extends Base {
         StringBuffer vars = new StringBuffer();
         StringBuffer varsColl = new StringBuffer();
         Attributes attrs = element.attributes();
-        HashMap<String, Object> param = new HashMap<String, Object>();
+        Map<String, Object> param = new ConcurrentHashMap<String, Object>();
         String language = RemoveArrKeyRtrn(attrs, "language", "plpgsql");
         param.put("language", language);
         List<String> varsArr = new ArrayList<>();
@@ -362,31 +363,3 @@ public class cmpDataset extends Base {
     }
 
 }
-
-
-
-/*
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
-
-        String code = "public class HelloWorld {\n" +
-                "  public static void main(String[] args) {\n" +
-                "    System.out.println(\"Hello, world!\");\n" +
-                "  }\n" +
-                "}";
-
-        // Get a compiler
-        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-
-        // Compile the code
-        int result = compiler.run(null, null, null, code);
-        if (result != 0) {
-            System.out.println("Compilation failed");
-            return;
-        }
-
-        // Load and execute the compiled class
-        Class<?> helloWorldClass = Class.forName("HelloWorld");
-        helloWorldClass.getMethod("main", String[].class).invoke(null, (Object) null);
-
- */

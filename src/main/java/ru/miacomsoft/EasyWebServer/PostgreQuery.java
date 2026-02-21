@@ -3,14 +3,15 @@ package ru.miacomsoft.EasyWebServer;
 import org.json.JSONObject;
 
 import java.sql.*;
-import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * класс работы с PostgreSQL
  */
 public class
 PostgreQuery {
-    public static HashMap<String, HashMap<String, Object>> procedureList = new HashMap<>();
+    public static ConcurrentHashMap<String, Map<String, Object>> procedureList = new ConcurrentHashMap<>();
 
     /**
      * Функция подключения к Postgre SQL
