@@ -58,7 +58,20 @@ public class cmpAction extends Base {
         relativePath = relativePath.replaceAll("[/\\\\]", "_");
         // Убираем недопустимые символы
         relativePath = relativePath.replaceAll("[^a-zA-Z0-9_]", "");
-        String functionName = (relativePath + "___" + element.attr("name")).toLowerCase();
+        String pathHash = getMd5Hash(relativePath);
+        if (pathHash.length() > 8) {
+            pathHash = pathHash.substring(0, 8); // Берем первые 8 символов хэша
+        }
+        // Получаем имя файла без расширения
+        String fileName = "";
+        if (relativePath.lastIndexOf('/') > 0) {
+            fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
+            if (fileName.lastIndexOf('.') > 0) {
+                fileName = fileName.substring(0, fileName.lastIndexOf('.'));
+            }
+        }
+        // String functionName = (relativePath + "___" + element.attr("name")).toLowerCase();
+        String functionName = (pathHash + "_" + fileName + "_" + element.attr("name")).toLowerCase();
 
         this.attr("style", "display:none");
         this.attr("action_name", functionName);
@@ -122,7 +135,7 @@ public class cmpAction extends Base {
                     System.out.println("Compiled Java function: " + functionName);
                 }
             } else if (query_type.equals("sql")) {
-                createSQLFunctionPG(ServerConstant.config.APP_NAME + "_" + functionName, this, element);
+                createSQLFunctionPG(ServerConstant.config.APP_NAME + "_" + functionName, this, element, docPath+" ("+element.attr("name")+")");
             }
         }
 
@@ -151,6 +164,25 @@ public class cmpAction extends Base {
         // sb.append("}); </script>");
         // Elements elements = doc.getElementsByTag("body");
         // elements.append(sb.toString());
+    }
+
+
+    /**
+     * Вспомогательный метод для вычисления MD5 хэша
+     */
+    private String getMd5Hash(String input) {
+        if (input == null) return "";
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(input.getBytes());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(input.hashCode());
+        }
     }
 
     public static byte[] onPage(HttpExchange query) {
@@ -333,7 +365,7 @@ public class cmpAction extends Base {
         return resultText.getBytes();
     }
 
-    private void createSQLFunctionPG(String functionName, Element elementThis, Element element) {
+    private void createSQLFunctionPG(String functionName, Element elementThis, Element element,String fileName) {
         // Очищаем имя функции от недопустимых символов
         functionName = functionName.replaceAll("[^a-zA-Z0-9_]", "");
 
@@ -395,6 +427,9 @@ public class cmpAction extends Base {
         sb.append(language);
         sb.append(" AS $$ \n");
         sb.append("BEGIN \n");
+        sb.append("--cmpAction fileName:");
+        sb.append(fileName);
+        sb.append("\n");
         sb.append(element.text().trim());
         sb.append("\nEND;$$\n");
 

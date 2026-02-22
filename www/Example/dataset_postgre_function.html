@@ -33,8 +33,10 @@
 <button onclick="myRun();">run</button>
 <script>
     function myRun() {
+         debugger
         setVar('inpArg', '123-входящая переменная');
         refreshDataSet('dsMyFun', function(data) {
+             debugger
              console.log('getVars()', getVars());
              console.log('data', data);
         });

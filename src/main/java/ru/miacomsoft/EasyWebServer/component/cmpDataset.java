@@ -59,7 +59,23 @@ public class cmpDataset extends Base {
         relativePath = relativePath.replaceAll("[/\\\\]", "_");
         // Убираем возможные лишние символы
         relativePath = relativePath.replaceAll("[^a-zA-Z0-9_]", "");
-        String functionName = (relativePath + "___" + element.attr("name")).toLowerCase();
+
+
+        String pathHash = getMd5Hash(relativePath);
+        if (pathHash.length() > 8) {
+            pathHash = pathHash.substring(0, 8); // Берем первые 8 символов хэша
+        }
+        // Получаем имя файла без расширения
+        String fileName = "";
+        if (relativePath.lastIndexOf('/') > 0) {
+            fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
+            if (fileName.lastIndexOf('.') > 0) {
+                fileName = fileName.substring(0, fileName.lastIndexOf('.'));
+            }
+        }
+        // String functionName = (relativePath + "___" + element.attr("name")).toLowerCase();
+        String functionName = (pathHash + "_" + fileName + "_" + element.attr("name")).toLowerCase();
+
 
         this.attr("style", "display:none");
         this.attr("dataset_name", functionName);
@@ -111,7 +127,7 @@ public class cmpDataset extends Base {
                     return;
                 }
             } else if (query_type.equals("sql")) {
-                createSQL(ServerConstant.config.APP_NAME + "_" + functionName, this, element);
+                createSQL(ServerConstant.config.APP_NAME + "_" + functionName, this, element, docPath+" ("+element.attr("name")+")");
             }
         }
         this.text("");
@@ -302,8 +318,24 @@ public class cmpDataset extends Base {
         result.put("vars", vars);
         return result.toString().getBytes();
     }
-
-    private void createSQL(String functionName, Element elementThis, Element element) {
+    /**
+     * Вспомогательный метод для вычисления MD5 хэша
+     */
+    private String getMd5Hash(String input) {
+        if (input == null) return "";
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(input.getBytes());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(input.hashCode());
+        }
+    }
+    private void createSQL(String functionName, Element elementThis, Element element, String fileName) {
         if (procedureList.containsKey(functionName) && !ServerConstant.config.DEBUG) {
             // Если функция уже создана в БД и режим отладки отключен, тогда пропускаем создание новой функции
             return;
@@ -402,7 +434,9 @@ public class cmpDataset extends Base {
         }
 
         sb.append("BEGIN\n");
-
+        sb.append("-- cmpDataset fileName:");
+        sb.append(fileName);
+        sb.append("\n");
         if (beforeCodeBloc.length() > 0) {
             sb.append(beforeCodeBloc);
             if (!beforeCodeBloc.endsWith(";") && !beforeCodeBloc.endsWith("\n")) {
