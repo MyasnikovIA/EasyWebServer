@@ -180,7 +180,7 @@ public class cmpAction extends Base {
         System.out.println("Query type: " + query_type);
 
         if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(action_name)) {
-            // Подготавливаем переменные для Java функции
+            // Подготавливаем переменные для Java функции - все как строки
             JSONObject varFun = new JSONObject();
             Iterator<String> keys = vars.keys();
 
@@ -190,6 +190,7 @@ public class cmpAction extends Base {
 
                 if (varValue instanceof JSONObject) {
                     JSONObject varObj = (JSONObject) varValue;
+                    // Всегда берем строковое значение
                     String value = varObj.optString("value", "");
                     if (value.isEmpty()) {
                         value = varObj.optString("defaultVal", "");
@@ -210,28 +211,37 @@ public class cmpAction extends Base {
             System.out.println("Java function result: " + resFun.toString());
 
             // Обрабатываем результаты
-            keys = resFun.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                Object keyvalue = resFun.get(key);
+            if (resFun.has("JAVA_ERROR")) {
+                // Если есть ошибка, добавляем её в результат
+                result.put("ERROR", resFun.get("JAVA_ERROR"));
 
-                if (key.equals("JAVA_ERROR")) {
-                    result.put("ERROR", keyvalue);
-                    continue;
-                }
+                // Возвращаем исходные vars без изменений, чтобы клиент не потерял данные
+                result.put("vars", vars);
+            } else {
+                // Обрабатываем успешный результат
+                keys = resFun.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    Object keyvalue = resFun.get(key);
 
-                // Обновляем значения в vars
-                if (vars.has(key) && vars.get(key) instanceof JSONObject) {
-                    vars.getJSONObject(key).put("value", keyvalue);
-                } else {
-                    JSONObject newVar = new JSONObject();
-                    newVar.put("value", keyvalue);
-                    newVar.put("src", key);
-                    newVar.put("srctype", "var");
-                    vars.put(key, newVar);
+                    if (key.equals("JAVA_ERROR")) {
+                        continue;
+                    }
+
+                    // Обновляем значения в vars, сохраняя структуру
+                    if (vars.has(key) && vars.get(key) instanceof JSONObject) {
+                        // Сохраняем как строку
+                        vars.getJSONObject(key).put("value", keyvalue.toString());
+                    } else {
+                        JSONObject newVar = new JSONObject();
+                        newVar.put("value", keyvalue.toString());
+                        newVar.put("src", key);
+                        newVar.put("srctype", "var");
+                        vars.put(key, newVar);
+                    }
                 }
+                result.put("vars", vars);
             }
-
         } else if (query_type.equals("sql")) {
             // Обработка SQL запросов
             try {

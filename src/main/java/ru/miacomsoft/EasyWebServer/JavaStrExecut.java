@@ -165,24 +165,92 @@ public class JavaStrExecut {
                 res.put("JAVA_ERROR", "Compile file not found");
             } else {
                 CompileObject compileObject = (CompileObject) InstanceClassName.get(nameFunction);
-                Class[] argTypes = new Class[]{JSONObject.class, HashMap.class, JSONArray.class};             // перечисляем типы входящих переменных
-                Method meth = compileObject.ClassNat.getMethod("evalFunc", argTypes);                                // получаем метод по имени и типам входящих переменных
-                res = (JSONObject) meth.invoke(compileObject.ObjectInstance, vars, session, data); // запуск мектода на выполнение
+                Class[] argTypes = new Class[]{JSONObject.class, HashMap.class, JSONArray.class};
+                Method meth = compileObject.ClassNat.getMethod("evalFunc", argTypes);
+
+                // Создаем копию vars, где все значения преобразованы в строки
+                JSONObject safeVars = new JSONObject();
+                Iterator<String> keys = vars.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    Object value = vars.get(key);
+
+                    // Преобразуем все значения в строки для безопасной передачи
+                    if (value != null) {
+                        safeVars.put(key, value.toString());
+                    } else {
+                        safeVars.put(key, "");
+                    }
+                }
+
+                System.out.println("Calling Java function with safe vars: " + safeVars.toString());
+
+                try {
+                    res = (JSONObject) meth.invoke(compileObject.ObjectInstance, safeVars, session, data);
+                } catch (InvocationTargetException e) {
+                    // Получаем исходное исключение
+                    Throwable targetException = e.getTargetException();
+
+                    // Формируем понятное сообщение об ошибке
+                    JSONObject errorInfo = new JSONObject();
+                    errorInfo.put("error", targetException.getClass().getName());
+                    errorInfo.put("message", targetException.getMessage());
+
+                    // Добавляем стектрейс для отладки
+                    StringWriter sw = new StringWriter();
+                    PrintWriter pw = new PrintWriter(sw);
+                    targetException.printStackTrace(pw);
+                    errorInfo.put("stacktrace", sw.toString());
+
+                    res.put("JAVA_ERROR", errorInfo);
+                    System.err.println("Error executing Java function: " + targetException.getMessage());
+                    targetException.printStackTrace();
+                }
             }
-        } catch (InvocationTargetException e) {
-            res.put("JAVA_ERROR", (e.getClass().getName() + ": " + e.getMessage()));
+        } catch (NoSuchMethodException e) {
+            res.put("JAVA_ERROR", createErrorInfo(e));
             System.err.println(e.getClass().getName() + ": " + e.getMessage());
         } catch (IllegalAccessException e) {
-            res.put("JAVA_ERROR", (e.getClass().getName() + ": " + e.getMessage()));
-            System.err.println(e.getClass().getName() + ": " + e.getMessage());
-        } catch (NoSuchMethodException e) {
-            res.put("JAVA_ERROR", (e.getClass().getName() + ": " + e.getMessage()));
+            res.put("JAVA_ERROR", createErrorInfo(e));
             System.err.println(e.getClass().getName() + ": " + e.getMessage());
         } catch (Exception e) {
-            res.put("JAVA_ERROR", (e.getClass().getName() + ": " + e.getMessage()));
+            res.put("JAVA_ERROR", createErrorInfo(e));
             System.err.println(e.getClass().getName() + ": " + e.getMessage());
         }
         return res;
+    }
+
+    /**
+     * Извлечение имени поля из сообщения об ошибке JSON
+     */
+    private String extractFieldNameFromError(String errorMessage) {
+        if (errorMessage == null) return null;
+        // Ищем паттерн JSONObject["FIELD_NAME"]
+        int start = errorMessage.indexOf("JSONObject[\"");
+        if (start >= 0) {
+            start += "JSONObject[\"".length();
+            int end = errorMessage.indexOf("\"]", start);
+            if (end > start) {
+                return errorMessage.substring(start, end);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Создание информативного объекта ошибки
+     */
+    private static JSONObject createErrorInfo(Exception e) {
+        JSONObject errorInfo = new JSONObject();
+        errorInfo.put("error", e.getClass().getName());
+        errorInfo.put("message", e.getMessage());
+
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        e.printStackTrace(pw);
+        errorInfo.put("stacktrace", sw.toString());
+
+        return errorInfo;
     }
 
     /**
@@ -442,11 +510,11 @@ public class JavaStrExecut {
     }
 
     /**
-    * Функция разбора ошибки компиляции и визуализации в виде HTML страницы
-    *
-    * @param infoCompile
-    * @return
-    */
+     * Функция разбора ошибки компиляции и визуализации в виде HTML страницы
+     *
+     * @param infoCompile
+     * @return
+     */
     public static String parseErrorCompile(JSONObject infoCompile) {
         StringBuffer message = new StringBuffer("HTTP error compile Java file:");
         String srcCode = infoCompile.getString("src");
@@ -798,4 +866,3 @@ class SpecialClassLoader extends ClassLoader {
         byteCode = code;
     }
 }
-

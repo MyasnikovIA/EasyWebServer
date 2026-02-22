@@ -13,7 +13,8 @@
     System.out.println("----dddddd----");
     System.out.println(vars);
     vars.put("EDIT_TEXT2", vars.getString("LPU_TEXT") + "--*");
-    vars.put("EDIT_TEXT", String.valueOf(vars.getInt("EDIT_TEXT") + 999));
+    // vars.put("EDIT_TEXT", String.valueOf(vars.getInt("EDIT_TEXT") + 999));
+    vars.put("EDIT_TEXT", (vars.getString("EDIT_TEXT") + 999));
     ]]>
     <var name="LPU" src="LPU" srctype="session"/>
     <var name="LPU_TEXT" src="LPU_TEXT" srctype="var"/>
