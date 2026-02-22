@@ -132,12 +132,25 @@ public class cmpAction extends Base {
             this.removeAttr(attr.getKey());
         }
 
-        StringBuffer sb = new StringBuffer();
-        sb.append("<script> $(function() {");
-        sb.append("  D3Api.setActionAuto('" + name + "');");
-        sb.append("}); </script>");
-        Elements elements = doc.getElementsByTag("body");
-        elements.append(sb.toString());
+        // Автоматическое подключение JavaScript библиотеки для cmpAction
+        Elements head = doc.getElementsByTag("head");
+
+        // Проверяем, не подключена ли уже библиотека
+        Elements existingScripts = head.select("script[src*='cmpAction_js']");
+        if (existingScripts.isEmpty()) {
+            // Добавляем ссылку на JS библиотеку
+            String jsPath = "{component}/cmpAction_js";
+            head.append("<script cmp=\"action-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
+            System.out.println("cmpAction: JavaScript library auto-included for action: " + name);
+        }
+
+        // Удаляем старый скрипт с setActionAuto, так как он теперь в библиотеке
+        // StringBuffer sb = new StringBuffer();
+        // sb.append("<script> $(function() {");
+        // sb.append("  D3Api.setActionAuto('" + name + "');");
+        // sb.append("}); </script>");
+        // Elements elements = doc.getElementsByTag("body");
+        // elements.append(sb.toString());
     }
 
     public static byte[] onPage(HttpExchange query) {

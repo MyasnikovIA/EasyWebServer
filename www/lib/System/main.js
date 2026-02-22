@@ -1,4 +1,21 @@
 window.GLOBAL_VARS = {};
+
+// Полифиллы для старых браузеров
+if (!Element.prototype.matches) {
+    Element.prototype.matches = Element.prototype.msMatchesSelector || Element.prototype.webkitMatchesSelector;
+}
+
+if (!Element.prototype.closest) {
+    Element.prototype.closest = function(s) {
+        var el = this;
+        do {
+            if (el.matches(s)) return el;
+            el = el.parentElement || el.parentNode;
+        } while (el !== null && el.nodeType === 1);
+        return null;
+    };
+}
+
 D3Api = new function () {
     var GLOBAL_VARS = {};
     var GLOBAL_CTRL = {};
@@ -46,9 +63,7 @@ D3Api = new function () {
         this.GLOBAL_ACTION[name] = obj;
     }
 
-    this.setActionAuto = function(name) {
-        this.GLOBAL_ACTION[name] = {};
-    }
+    // setActionAuto удален - теперь в cmpAction_js
 
     this.setDatasetAuto = function(name) {
         this.GLOBAL_DATA_SET[name] = {"data":[]};
@@ -362,7 +377,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 
-// ============== Глобальные функции из main_old.js ==============
+// ============== Глобальные функции ==============
 
 function getVars() {
     return window.GLOBAL_VARS;
@@ -415,7 +430,7 @@ function setSession(name, objJson) {
     })
         .then(response => response.json())
         .then(dataObj => {
-            console.log("dataObj");
+            console.log("Session saved:", name);
         })
         .catch(error => console.error('Error:', error));
 }
@@ -473,359 +488,3 @@ function loadDirect(name) {
         .catch(error => console.error('Error:', error));
 }
 
-function executeAction(nameAction, callBack) {
-    var ctrlObj = document.querySelector('[name="' + nameAction + '"]');
-    if (!ctrlObj) {
-        console.error('Action not found:', nameAction);
-        return;
-    }
-
-    // Получаем атрибуты
-    var varsString = ctrlObj.getAttribute('vars');
-    console.log('Raw vars string:', varsString);
-
-    // Парсим vars
-    var jsonVars = {};
-
-    try {
-        var fixedString = varsString
-            .replace(/'/g, '"')
-            .replace(/(\w+):/g, '"$1":')
-            .replace(/,\s*}/g, '}');
-
-        console.log('Fixed string:', fixedString);
-        jsonVars = JSON.parse(fixedString);
-    } catch (e) {
-        console.log('JSON parse failed, trying manual parse:', e);
-
-        try {
-            var cleanStr = varsString.trim();
-            if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {
-                cleanStr = cleanStr.substring(1, cleanStr.length - 1);
-            }
-
-            var pairs = [];
-            var depth = 0;
-            var current = '';
-
-            for (var i = 0; i < cleanStr.length; i++) {
-                var c = cleanStr[i];
-
-                if (c === '{') depth++;
-                else if (c === '}') depth--;
-
-                if (c === ',' && depth === 0) {
-                    pairs.push(current);
-                    current = '';
-                } else {
-                    current += c;
-                }
-            }
-            if (current.trim()) {
-                pairs.push(current);
-            }
-
-            for (var p = 0; p < pairs.length; p++) {
-                var pair = pairs[p];
-                var colonIndex = pair.indexOf(':');
-                if (colonIndex === -1) continue;
-
-                var key = pair.substring(0, colonIndex).trim().replace(/['"]/g, '');
-                var valueStr = pair.substring(colonIndex + 1).trim();
-
-                if (valueStr.startsWith('{') && valueStr.endsWith('}')) {
-                    var obj = {};
-                    var innerStr = valueStr.substring(1, valueStr.length - 1);
-                    var innerPairs = innerStr.split(',');
-
-                    for (var inner = 0; inner < innerPairs.length; inner++) {
-                        var innerPair = innerPairs[inner];
-                        var innerColon = innerPair.indexOf(':');
-                        if (innerColon === -1) continue;
-
-                        var innerKey = innerPair.substring(0, innerColon).trim().replace(/['"]/g, '');
-                        var innerValue = innerPair.substring(innerColon + 1).trim().replace(/['"]/g, '');
-                        obj[innerKey] = innerValue;
-                    }
-                    jsonVars[key] = obj;
-                }
-            }
-
-            console.log('Manually parsed vars:', jsonVars);
-        } catch (e2) {
-            console.error('Manual parse failed:', e2);
-        }
-    }
-
-    var query_type = ctrlObj.getAttribute('query_type') || 'java';
-    var action_name = ctrlObj.getAttribute('action_name');
-
-    console.log('Action info:', {query_type, action_name});
-    console.log('Parsed vars:', jsonVars);
-
-    // Формируем данные для отправки
-    var requestData = {};
-
-    for (var key in jsonVars) {
-        var varInfo = jsonVars[key];
-        if (!varInfo) continue;
-
-        var value = '';
-        var src = varInfo.src || key;
-        var srctype = varInfo.srctype || 'var';
-        var defaultVal = varInfo.defaultVal || '';
-        var len = varInfo.len || '';
-
-        if (srctype === 'var') {
-            value = getVar(src) || defaultVal;
-        } else if (srctype === 'ctrl') {
-            value = D3Api.getValue(src) || defaultVal;
-        } else if (srctype === 'session') {
-            value = defaultVal;
-        }
-
-        requestData[key] = {
-            'srctype': srctype,
-            'src': src,
-            'value': String(value),
-            'defaultVal': defaultVal
-        };
-
-        if (len) {
-            requestData[key].len = len;
-        }
-    }
-
-    console.log('Sending request data:', requestData);
-    console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name);
-
-    fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-    })
-        .then(response => response.json())
-        .then(dataObj => {
-            console.log('Response received:', dataObj);
-
-            if (dataObj.redirect) {
-                saveDirect('loginDirect');
-                window.location.href = dataObj.redirect;
-                return;
-            }
-
-            if (dataObj.ERROR) {
-                console.error('Action error:', dataObj.ERROR);
-            }
-
-            // Обрабатываем выходные переменные
-            if (dataObj.vars) {
-                var data = dataObj.vars;
-                for (var key in data) {
-                    var varInfo = data[key];
-                    if (typeof varInfo === 'object') {
-                        var value = varInfo.value;
-                        var srctype = varInfo.srctype || 'var';
-                        var src = varInfo.src || key;
-
-                        if (value === 'null') value = null;
-                        else if (value === 'true') value = true;
-                        else if (value === 'false') value = false;
-
-                        console.log('Setting output:', {key, srctype, src, value});
-
-                        if (srctype === 'var') {
-                            setVar(src, value);
-                        } else if (srctype === 'ctrl') {
-                            if (value === null) value = '';
-                            D3Api.setValue(src, value);
-                        }
-                    }
-                }
-            }
-
-            D3Api.setAction(nameAction, dataObj);
-
-            if (callBack) {
-                callBack(dataObj.vars || {});
-            }
-        })
-        .catch((error, xhr, status) => {
-            console.error('Fetch error:', error);
-        });
-}
-
-/**
- * Функция обновления Dataset
- * @param nameDataset - имя датасета из cmpDataset
- * @param callBack - функция обратного вызова
- */
-function refreshDataSet(nameDataset, callBack) {
-    var ctrlObj = document.querySelector('[name="' + nameDataset + '"]');
-    if (!ctrlObj) {
-        console.error('Dataset not found:', nameDataset);
-        return;
-    }
-
-    // Получаем строку с атрибутом vars
-    var varsString = ctrlObj.getAttribute('vars');
-    console.log('Raw vars string:', varsString);
-
-    var jsonVars;
-
-    function parseVarsString(str) {
-        var result = {};
-
-        str = str.trim();
-        if (str.startsWith('{') && str.endsWith('}')) {
-            str = str.substring(1, str.length - 1);
-        }
-
-        var pairs = [];
-        var depth = 0;
-        var current = '';
-        var inString = false;
-
-        for (var i = 0; i < str.length; i++) {
-            var c = str[i];
-
-            if (c === '{') depth++;
-            else if (c === '}') depth--;
-            else if (c === "'" && (i === 0 || str[i-1] !== '\\')) inString = !inString;
-
-            if (c === ',' && depth === 0 && !inString) {
-                pairs.push(current);
-                current = '';
-            } else {
-                current += c;
-            }
-        }
-        if (current.trim()) {
-            pairs.push(current);
-        }
-
-        for (var p = 0; p < pairs.length; p++) {
-            var pair = pairs[p];
-            var colonIndex = pair.indexOf(':');
-            if (colonIndex === -1) continue;
-
-            var key = pair.substring(0, colonIndex).trim().replace(/^'|'$/g, '');
-            var valueStr = pair.substring(colonIndex + 1).trim();
-
-            if (valueStr.startsWith('{') && valueStr.endsWith('}')) {
-                var obj = {};
-                var innerStr = valueStr.substring(1, valueStr.length - 1);
-                var innerPairs = innerStr.split(',');
-
-                for (var inner = 0; inner < innerPairs.length; inner++) {
-                    var innerPair = innerPairs[inner];
-                    var innerColon = innerPair.indexOf(':');
-                    if (innerColon === -1) continue;
-
-                    var innerKey = innerPair.substring(0, innerColon).trim().replace(/^'|'$/g, '');
-                    var innerValue = innerPair.substring(innerColon + 1).trim().replace(/^'|'$/g, '');
-                    obj[innerKey] = innerValue;
-                }
-                result[key] = obj;
-            }
-        }
-
-        return result;
-    }
-
-    try {
-        jsonVars = parseVarsString(varsString);
-        console.log('Parsed vars:', jsonVars);
-    } catch (e) {
-        console.error('Failed to parse vars attribute:', e);
-        return;
-    }
-
-    var query_type = ctrlObj.getAttribute('query_type');
-    var db = ctrlObj.getAttribute('db');
-    var dataset_name = ctrlObj.getAttribute('dataset_name');
-
-    console.log('Dataset info:', {query_type, db, dataset_name});
-
-    // Формируем данные для отправки
-    var requestData = {};
-
-    for (var key in jsonVars) {
-        var varInfo = jsonVars[key];
-        var value = '';
-
-        if (varInfo['srctype'] === 'var') {
-            value = getVar(varInfo['src']) || varInfo['defaultVal'] || '';
-        } else if (varInfo['srctype'] === 'ctrl') {
-            value = D3Api.getValue(varInfo['src']) || varInfo['defaultVal'] || '';
-        } else {
-            value = varInfo['defaultVal'] || '';
-        }
-
-        requestData[key] = {
-            'srctype': varInfo['srctype'],
-            'src': varInfo['src'],
-            'value': value,
-            'defaultVal': varInfo['defaultVal'] || ''
-        };
-
-        if (varInfo['len']) {
-            requestData[key]['len'] = varInfo['len'];
-        }
-    }
-
-    console.log('Sending request data:', requestData);
-
-    fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-    })
-        .then(response => response.json())
-        .then(dataObj => {
-            console.log('Response received:', dataObj);
-
-            if (dataObj['redirect']) {
-                saveDirect('loginDirect');
-                window.location.href = dataObj['redirect'];
-                return;
-            }
-
-            if (dataObj['vars_out']) {
-                var outVars = dataObj['vars_out'];
-                for (var key in outVars) {
-                    var varInfo = outVars[key];
-                    var value = varInfo['value'];
-
-                    if (value === 'null') value = null;
-                    else if (value === 'true') value = true;
-                    else if (value === 'false') value = false;
-
-                    if (varInfo['srctype'] === 'var') {
-                        setVar(varInfo['src'], value);
-                    } else if (varInfo['srctype'] === 'ctrl') {
-                        if (value === null) value = '';
-                        D3Api.setValue(varInfo['src'], value);
-                    }
-                }
-            }
-
-            if (!D3Api.GLOBAL_DATA_SET[nameDataset]) {
-                D3Api.setDatasetAuto(nameDataset);
-            }
-            D3Api.GLOBAL_DATA_SET[nameDataset].data = dataObj['data'] || [];
-
-            console.log('Dataset data:', dataObj['data']);
-
-            if (callBack) {
-                callBack(dataObj['data']);
-            }
-        })
-        .catch(error => {
-            console.error('Fetch error:', error);
-        });
-}

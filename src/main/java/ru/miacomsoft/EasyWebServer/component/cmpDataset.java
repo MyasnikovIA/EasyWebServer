@@ -125,8 +125,19 @@ public class cmpDataset extends Base {
         sb.append("}); </script>");
         Elements elements = doc.getElementsByTag("body");
         elements.append(sb.toString());
-    }
 
+        // Автоматическое подключение JavaScript библиотеки для cmpDataset
+        Elements head = doc.getElementsByTag("head");
+
+        // Проверяем, не подключена ли уже библиотека
+        Elements existingScripts = head.select("script[src*='cmpDataset_js']");
+        if (existingScripts.isEmpty()) {
+            // Добавляем ссылку на JS библиотеку
+            String jsPath = "{component}/cmpDataset_js";
+            head.append("<script cmp=\"dataset-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
+            System.out.println("cmpDataset: JavaScript library auto-included for dataset: " + name);
+        }
+    }
 
 
     public static byte[] onPage(HttpExchange query) {
