@@ -31,6 +31,7 @@ D3Api = new function () {
     this.setVar = function(name, value) {
         GLOBAL_VARS[name] = value;
     }
+
     /**
      * Получение значений от имени переменной
      * @param name {string} - Имя переменной
@@ -44,26 +45,31 @@ D3Api = new function () {
     this.setAction = function(name, obj) {
         this.GLOBAL_ACTION[name] = obj;
     }
+
     this.setActionAuto = function(name) {
         this.GLOBAL_ACTION[name] = {};
     }
+
     this.setDatasetAuto = function(name) {
         this.GLOBAL_DATA_SET[name] = {"data":[]};
     }
+
     this.setDataset = function(name, obj) {
         this.GLOBAL_DATA_SET[name] = obj;
         Object.defineProperty(this.GLOBAL_DATA_SET[name], 'data', {
             get: function() {
-                // todo: дописать обновление  зависимостей, после обновления данных в датасете
+                // todo: дописать обновление зависимостей, после обновления данных в датасете
             },
             set: function(value) {
-                // todo: дописать обновление  зависимостей, после обновления данных в датасете
+                // todo: дописать обновление зависимостей, после обновления данных в датасете
             }
         });
     }
+
     this.getDataset = function(name) {
         return this.GLOBAL_DATA_SET[name];
     }
+
     this.setControlAuto = function(name, obj) {
         GLOBAL_CTRL[name] = obj;
     }
@@ -74,22 +80,28 @@ D3Api = new function () {
 
     this.setLabel = function(name, text) {
         if (GLOBAL_CTRL[name]) {
-            (GLOBAL_CTRL[name]).find('[block="label"]').text(text);
-            return true;
+            var labelElement = GLOBAL_CTRL[name].querySelector('[block="label"]');
+            if (labelElement) {
+                labelElement.textContent = text;
+                return true;
+            }
         } else {
             var ctrlObj;
-            if (typeof name === 'object') { // Если на вход подали в место имени jquery объект (контрола),тогда работаем с ним
+            if (typeof name === 'object') { // Если на вход подали вместо имени DOM элемент (контрола), тогда работаем с ним
                 ctrlObj = name;
             } else {
-                ctrlObj = $('[name="'+name+'"]');
+                ctrlObj = document.querySelector('[name="' + name + '"]');
             }
-            var ctrl = ctrlObj.find('[name="'+name+'_ctrl"]');
-            if (ctrl.length === 0) {
-                ctrl = this.getCtrl(name);
-            }
-            if (ctrl.length >0) {
-                ctrl[0].innerText = text;
-                return true;
+
+            if (ctrlObj) {
+                var ctrl = ctrlObj.querySelector('[name="' + name + '_ctrl"]');
+                if (!ctrl) {
+                    ctrl = this.getCtrl(name);
+                }
+                if (ctrl) {
+                    ctrl.innerText = text;
+                    return true;
+                }
             }
         }
         return false;
@@ -97,19 +109,20 @@ D3Api = new function () {
 
     this.getLabel = function(name) {
         if (GLOBAL_CTRL[name]) {
-            return (GLOBAL_CTRL[name]).find('[block="label"]').text();
+            var labelElement = GLOBAL_CTRL[name].querySelector('[block="label"]');
+            return labelElement ? labelElement.textContent : null;
         }
         return null;
     }
 
     this.setLabels = function(objText) {
-        for (const name in obj) {
-            this.getLabel(name,obj[name]);
+        for (const name in objText) {
+            this.setLabel(name, objText[name]);
         }
     }
 
-    this.getLabels = function(objText) {
-        var ctrlList = $('[schema]');
+    this.getLabels = function() {
+        var ctrlList = document.querySelectorAll('[schema]');
         var res = {};
         for (var i = 0; i < ctrlList.length; i++) {
             var name = ctrlList[i].getAttribute('name');
@@ -120,95 +133,83 @@ D3Api = new function () {
 
     this.getValue = function(name, defValue) {
         var ctrlObj;
-        if (typeof name === 'object') { // Если на вход подали в место имени jquery объект (контрола),тогда работаем с ним
+        if (typeof name === 'object') { // Если на вход подали вместо имени DOM элемент (контрола), тогда работаем с ним
             ctrlObj = name;
         } else {
-            ctrlObj = $('[name="'+name+'"]');
+            ctrlObj = document.querySelector('[name="' + name + '"]');
         }
-        return ctrlObj.val();
-// todo: Дописать получение значенийи  для разных элементов дома
-//        if (+ctrlObj.length === 0) {
-//            return defValue;
-//        }
-//        var ctrl = ctrlObj.find('[name="'+name+'_ctrl"]')
-//        if (ctrlObj.attr('type') === 'checkbox') {
-//            return ctrl.is(':checked');
-//        } else if (ctrlObj.attr('type') === 'radio') {
-//            var valItemObject = ctrlObj.find('input[type="radio"]:checked');
-//            if (valItemObject.length !== 0) {
-//               valItemObject.attr('value');
-//               return valItemObject.attr('value');
-//            } else {
-//               return defValue;
-//            }
-//        } else if (ctrlObj.attr('type') === 'accordion') {
-//           return  ctrl.accordion('option', 'active' );
-//        } else if (ctrlObj.attr('type') === 'dialog') {
-//           return  ctrl.dialog('option', 'active' );
-//        } else if (ctrlObj.attr('type') === 'tabs') {
-//           return  ctrl.tabs('option', 'active');
-//        } else {
-//            return ctrl.val() || defValue;
-//        }
+
+        if (!ctrlObj) return defValue;
+
+        // Получаем значение для разных типов элементов
+        var tagName = ctrlObj.tagName.toLowerCase();
+
+        if (tagName === 'input') {
+            var type = ctrlObj.type.toLowerCase();
+            if (type === 'checkbox') {
+                return ctrlObj.checked;
+            } else if (type === 'radio') {
+                var radioName = ctrlObj.getAttribute('name');
+                var checkedRadio = document.querySelector('input[name="' + radioName + '"]:checked');
+                return checkedRadio ? checkedRadio.value : defValue;
+            } else {
+                return ctrlObj.value;
+            }
+        } else if (tagName === 'select' || tagName === 'textarea') {
+            return ctrlObj.value;
+        } else {
+            return ctrlObj.textContent;
+        }
     }
 
     this.setValue = function(name, value) {
-        var ctrlObj = $('[name="'+name+'"]');
-        ctrlObj.val(value);
-// todo: Дописать присвоение  значенийи  для разных элементов дома
-//        var ctrl = ctrlObj.find('[name="'+name+'_ctrl"]');
-//        if (ctrl.length === 0) {
-//            ctrl = this.getCtrl(name);
-//        }
-//        var val = value;
-//        ctrlObj.val(val);
-//        if (ctrlObj.attr('type') === 'checkbox') {
-//            val = (val==='on' || val);
-//            ctrl.prop('checked', val);
-//        } else if (ctrlObj.attr('type') === 'radio') {
-//             var ctrlItems = ctrlObj.find('[type="radio"]');
-//             if (ctrlItems.length>0) {
-//                 for (var i = 0; i < ctrlItems.length; i++) {
-//                     var valItem = (ctrlObj.find('[type="radio"]')[i]).getAttribute('value');
-//                     if (valItem == value) {
-//                         (ctrlObj.find('[type="radio"]')[i]).setAttribute('checked','checked')
-//                     }
-//                 }
-//             }
-//        } else if (ctrlObj.attr('type') === 'accordion') {
-//           ctrl.accordion("option", {active: false})
-//           ctrl.accordion("option", {active: value});
-//        } else if (ctrlObj.attr('type') === 'dialog') {
-//           if (val) {
-//               ctrl.dialog("open");
-//           } else {
-//               ctrl.dialog("close");
-//           }
-//        } else if (ctrlObj.attr('type') === 'tabs') {
-//           ctrl.tabs("option", {active: value});
-//        } else {
-//            ctrl.val(val);
-//        }
-//        if ('trigger' in ctrl) {
-//            ctrl.trigger("change");
-//        }
-//        var schema =  ctrlObj.attr("schema");
-//        if (schema.length > 0) {
-//            ctrl[schema]("refresh");
-//        }
-    }
-    this.getCtrl = function(name) {
-        let ctrlName = $('[name="'+name+'"]').attr('ctrl');
-        return  $('[name="'+ctrlName+'"]');
+        var ctrlObj = document.querySelector('[name="' + name + '"]');
+        if (!ctrlObj) return;
+
+        var tagName = ctrlObj.tagName.toLowerCase();
+
+        if (tagName === 'input') {
+            var type = ctrlObj.type.toLowerCase();
+            if (type === 'checkbox') {
+                ctrlObj.checked = (value === true || value === 'on' || value === 'true');
+            } else if (type === 'radio') {
+                var radioName = ctrlObj.getAttribute('name');
+                var radios = document.querySelectorAll('input[name="' + radioName + '"]');
+                for (var i = 0; i < radios.length; i++) {
+                    if (radios[i].value == value) {
+                        radios[i].checked = true;
+                        break;
+                    }
+                }
+            } else {
+                ctrlObj.value = value;
+            }
+        } else if (tagName === 'select' || tagName === 'textarea') {
+            ctrlObj.value = value;
+        } else {
+            ctrlObj.textContent = value;
+        }
+
+        // Генерируем событие change
+        var changeEvent = new Event('change', { bubbles: true });
+        ctrlObj.dispatchEvent(changeEvent);
     }
 
+    this.getCtrl = function(name) {
+        var ctrlElement = document.querySelector('[name="' + name + '"]');
+        if (!ctrlElement) return null;
+
+        var ctrlName = ctrlElement.getAttribute('ctrl');
+        return ctrlName ? document.querySelector('[name="' + ctrlName + '"]') : null;
+    }
 
     this.getValues = function() {
-        let ctrlList = $('[schema]');
-        let res = {};
+        var ctrlList = document.querySelectorAll('[schema]');
+        var res = {};
         if (!ctrlList) return res;
-        for (let i = 0; i < ctrlList.length; i++) {
-            let name = ctrlList[i].getAttribute('name');
+
+        for (var i = 0; i < ctrlList.length; i++) {
+            var name = ctrlList[i].getAttribute('name');
             res[name] = this.getValue(name);
         }
         return res;
@@ -216,129 +217,148 @@ D3Api = new function () {
 
     this.setValues = function(obj) {
         for (const name in obj) {
-            this.setValue(name,obj[name]);
+            this.setValue(name, obj[name]);
         }
     }
 
-
     this.setDisabled = function(name, bool) {
-        bool = (bool == true || bool);
-        var ctrlObj = $('[name="'+name+'"]');
-        var ctrl =  this.getCtrl(name);
-        var schema =  ctrlObj.attr("schema");
-        if (ctrlObj.attr('type') === 'accordion') {
-            bool ? ctrl.accordion( 'disable' ) : ctrl.accordion( 'enable' ) ;
-        } else if (ctrlObj.attr('type') === 'tabs') {
-            bool ? ctrl.tabs( 'disable' ) : ctrl.tabs( 'enable' ) ;
+        bool = (bool == true);
+        var ctrlObj = document.querySelector('[name="' + name + '"]');
+        if (!ctrlObj) return;
+
+        var ctrl = this.getCtrl(name);
+        if (!ctrl) return;
+
+        var schema = ctrlObj.getAttribute('schema');
+        var type = ctrlObj.getAttribute('type');
+
+        if (type === 'accordion' || type === 'tabs') {
+            // Для компонентов easyui
+            if (bool) {
+                ctrl.setAttribute('disabled', 'disabled');
+                ctrl.classList.add('ui-state-disabled');
+            } else {
+                ctrl.removeAttribute('disabled');
+                ctrl.classList.remove('ui-state-disabled', 'ui-button-disabled');
+            }
         } else {
             if (bool) {
-                ctrl.prop( "disabled", true);
+                ctrl.setAttribute('disabled', 'disabled');
             } else {
-                ctrl.prop( "disabled", false);
-                ctrl.removeAttr('disabled');
-                if (ctrl.hasClass( "ui-button-disabled" )) ctrl.removeClass( "ui-button-disabled" );
-                if (ctrl.hasClass( "ui-state-disabled" )) ctrl.removeClass( "ui-state-disabled" );
+                ctrl.removeAttribute('disabled');
+                ctrl.classList.remove('ui-state-disabled', 'ui-button-disabled');
             }
         }
     }
 
     this.setDisableds = function(obj) {
         for (const name in obj) {
-            this.setDisabled(name,obj[name]);
+            this.setDisabled(name, obj[name]);
         }
     }
 
-    this.setDisabledArr = function(arr,val) {
-        for (const ind in arr) {
+    this.setDisabledArr = function(arr, val) {
+        for (var ind = 0; ind < arr.length; ind++) {
             var ctrlName = arr[ind].trim();
-            if (ctrlName.length>0) this.setDisabled(ctrlName,val);
+            if (ctrlName.length > 0) this.setDisabled(ctrlName, val);
         }
     }
 
     this.setVisible = function(name, bool) {
-        bool = (bool == true || bool);
+        bool = (bool == true);
         var ctrl = D3Api.getControl(name);
-        bool ? ctrl.css("visibility", "visible") : ctrl.css("visibility", "hidden");
+        if (ctrl) {
+            ctrl.style.visibility = bool ? 'visible' : 'hidden';
+        }
     }
+
     this.setVisibles = function(obj) {
         for (const name in obj) {
             this.setVisible(name, obj[name]);
         }
     }
 
-    this.setStyle = function (name, propObject) {
-        let ctrl = D3Api.getControl(name);
-        for (const key in propObject) {
-            ctrl.css(key, propObject[key]);
+    this.setStyle = function(name, propObject) {
+        var ctrl = D3Api.getControl(name);
+        if (!ctrl) return;
+
+        for (var key in propObject) {
+            ctrl.style[key] = propObject[key];
         }
     }
 
-    this.move = function(name,bool) {
-        let ctrlObj = $('[name="'+name+'"]');
-        if (bool) {
-            ctrlObj.draggable().draggable( 'enable' );
-            ctrlObj.resizable({animate: true});
-            ctrlObj.resizable( 'enable' );
-            this.setDisabled(name,true);
+    this.move = function(name, bool) {
+        var ctrlObj = document.querySelector('[name="' + name + '"]');
+        if (!ctrlObj) return;
 
+        if (bool) {
+            ctrlObj.setAttribute('draggable', 'true');
+            ctrlObj.style.resize = 'both';
+            ctrlObj.style.overflow = 'auto';
+            this.setDisabled(name, true);
         } else {
-            ctrlObj.draggable( 'disable' );
-            ctrlObj.resizable( 'disable' );
-            this.setDisabled(name,false);
+            ctrlObj.setAttribute('draggable', 'false');
+            ctrlObj.style.resize = 'none';
+            this.setDisabled(name, false);
         }
     }
 
-    this.draggable = function(name,bool) {
-        let ctrlObj = $('[name="'+name+'"]');
-        if (bool) {
-            ctrlObj.draggable().draggable( 'enable' );
-        } else {
-            ctrlObj.draggable( 'disable' );
+    this.draggable = function(name, bool) {
+        var ctrlObj = document.querySelector('[name="' + name + '"]');
+        if (ctrlObj) {
+            ctrlObj.setAttribute('draggable', bool ? 'true' : 'false');
         }
     }
 
     this.resizable = function(name, bool) {
-        let ctrlObj = $('[name="'+name+'"]');
+        var ctrlObj = document.querySelector('[name="' + name + '"]');
+        if (!ctrlObj) return;
+
         if (bool) {
-            ctrlObj.resizable({animate: true});
-            ctrlObj.resizable( 'enable' );
-            this.setDisabled(name,true);
+            ctrlObj.style.resize = 'both';
+            ctrlObj.style.overflow = 'auto';
+            this.setDisabled(name, true);
         } else {
-            ctrlObj.resizable( 'disable' );
-            this.setDisabled(name,false);
+            ctrlObj.style.resize = 'none';
+            this.setDisabled(name, false);
         }
     }
-    this.msgbox = function(text, buttontext, collb) {
-        // D3Api.msgbox("Нажми ок","OK")
-        buttontext = buttontext || "OK"
-        $( "<div>" + text + "</div>" ).dialog({
-            dialogClass: "no-close",
-            buttons: [
-                {
-                    text: buttontext,
-                    click: function() {
-                        $( this ).dialog( "close" );
-                        $(this).remove();
-                    }
-                }
-            ]
+
+    this.msgbox = function(text, buttontext, callback) {
+        buttontext = buttontext || "OK";
+
+        var dialog = document.createElement('div');
+        dialog.textContent = text;
+        dialog.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; border:1px solid #ccc; padding:20px; z-index:10000; box-shadow:0 2px 10px rgba(0,0,0,0.1);';
+
+        var button = document.createElement('button');
+        button.textContent = buttontext;
+        button.style.cssText = 'margin-top:15px; padding:5px 15px; background:#007bff; color:white; border:none; cursor:pointer;';
+
+        button.addEventListener('click', function() {
+            document.body.removeChild(dialog);
+            if (callback) callback();
         });
+
+        dialog.appendChild(button);
+        document.body.appendChild(dialog);
     }
 }
 
-window.d3  = new D3Api.init(document.getElementsByTagName("body"));
+window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
 
 document.addEventListener("DOMContentLoaded", function() {
-    // После загрузки страницы находим все тэги с атрибутами "name" "cmptype" и добавляем их в контролы, для возможности модификации из D3
-    const elementsWithNameAttribute = D3Api.D3MainContainer.querySelectorAll('[name][cmptype]');
-    const elementsArray = Array.from(elementsWithNameAttribute);
-    for (let ctrlObj of elementsArray) {
+    // После загрузки страницы находим все тэги с атрибутами "name" "cmptype" и добавляем их в контролы
+    var elementsWithNameAttribute = D3Api.D3MainContainer.querySelectorAll('[name][cmptype]');
+
+    for (var i = 0; i < elementsWithNameAttribute.length; i++) {
+        var ctrlObj = elementsWithNameAttribute[i];
         if (ctrlObj.getAttribute('cmptype')) {
-            const cmptype = ctrlObj.getAttribute('cmptype').toLocaleLowerCase();
-            if ((cmptype ==='action') || (cmptype ==='dataset')) continue;
+            var cmptype = ctrlObj.getAttribute('cmptype').toLowerCase();
+            if ((cmptype === 'action') || (cmptype === 'dataset')) continue;
         }
-        const nameCtrl = ctrlObj.getAttribute('name');
-        D3Api.setControlAuto(nameCtrl,ctrlObj);
+        var nameCtrl = ctrlObj.getAttribute('name');
+        D3Api.setControlAuto(nameCtrl, ctrlObj);
     }
 });
 
@@ -349,17 +369,17 @@ function getVars() {
 };
 
 function setVars(obj) {
-    for (let key in obj) {
+    for (var key in obj) {
         window.GLOBAL_VARS[key] = obj[key];
     }
 };
 
-function setVar(name,value) {
+function setVar(name, value) {
     window.GLOBAL_VARS[name] = value;
 };
 
-function getVar(name,defaultValue) {
-    if (name in window.GLOBAL_VARS){
+function getVar(name, defaultValue) {
+    if (name in window.GLOBAL_VARS) {
         return window.GLOBAL_VARS[name];
     } else {
         return defaultValue;
@@ -367,47 +387,56 @@ function getVar(name,defaultValue) {
 };
 
 function logout() {
-    $.ajax({
-        url: '/{component}/loginDataBase?logoff=1',
+    fetch('/{component}/loginDataBase?logoff=1', {
         method: 'POST',
-        dataType: 'json',
-        data: null,
-        success: function(dataObj) {
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+        .then(response => response.json())
+        .then(dataObj => {
             if (!dataObj['connect']) {
                 D3Api.setLabel('ctrlErrorInfo', dataObj['error']);
             }
             if ('redirect' in dataObj) {
                 window.location.href = dataObj['redirect'];
             }
-        }
-    });
+        })
+        .catch(error => console.error('Error:', error));
 }
 
-function setSession(name,objJson) {
-    $.ajax({
-        url: '/{component}/session?set_session='+name,
+function setSession(name, objJson) {
+    fetch('/{component}/session?set_session=' + name, {
         method: 'POST',
-        dataType: 'json',
-        data: JSON.stringify(objJson),
-        async:false,
-        success: function(dataObj) {
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(objJson)
+    })
+        .then(response => response.json())
+        .then(dataObj => {
             console.log("dataObj");
-        }
-    });
+        })
+        .catch(error => console.error('Error:', error));
 }
 
 function getSession(name) {
-    var resObj={};
-    $.ajax({
-        url: '/{component}/session?get_session='+name,
-        method: 'POST',
-        dataType: 'json',
-        data: "{}",
-        async:false,
-        success: function(dataObj) {
-            resObj = dataObj;
+    var resObj = {};
+
+    // Синхронный XHR для совместимости (async=false)
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/{component}/session?get_session=' + name, false);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send('{}');
+
+    if (xhr.status === 200) {
+        try {
+            resObj = JSON.parse(xhr.responseText);
+        } catch (e) {
+            console.error('JSON parse error:', e);
         }
-    });
+    }
+
     return resObj;
 }
 
@@ -415,69 +444,66 @@ function saveDirect(name) {
     if (typeof name === 'undefined') {
         name = 'local';
     }
-    $.ajax({
-        url: '/{component}/sessionDirect?set_direct='+name,
-        method: 'POST',
-        data: window.location.href,
-        success: function(dataObj) {
 
-        }
-    });
+    fetch('/{component}/sessionDirect?set_direct=' + name, {
+        method: 'POST',
+        body: window.location.href
+    })
+        .catch(error => console.error('Error:', error));
 }
 
 function loadDirect(name) {
     if (typeof name === 'undefined') {
         name = 'local';
     }
-    $.ajax({
-        url: '/{component}/sessionDirect?get_direct='+name,
+
+    fetch('/{component}/sessionDirect?get_direct=' + name, {
         method: 'POST',
-        data: "{}",
-        dataType: 'json',
-        success: function(dataObj) {
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: '{}'
+    })
+        .then(response => response.json())
+        .then(dataObj => {
             if ('redirect' in dataObj) {
                 window.location.href = dataObj['redirect'];
             }
-        }
-    });
+        })
+        .catch(error => console.error('Error:', error));
 }
 
-
 function executeAction(nameAction, callBack) {
-    var ctrlObj = $('[name="'+nameAction+'"]');
-    if (!ctrlObj || ctrlObj.length === 0) {
+    var ctrlObj = document.querySelector('[name="' + nameAction + '"]');
+    if (!ctrlObj) {
         console.error('Action not found:', nameAction);
         return;
     }
 
     // Получаем атрибуты
-    var varsString = ctrlObj[0].getAttribute('vars');
+    var varsString = ctrlObj.getAttribute('vars');
     console.log('Raw vars string:', varsString);
 
-    // Парсим vars - улучшенная версия
+    // Парсим vars
     var jsonVars = {};
 
     try {
-        // Пробуем распарсить как JSON (с заменой кавычек)
         var fixedString = varsString
-            .replace(/'/g, '"')           // заменяем одинарные кавычки на двойные
-            .replace(/(\w+):/g, '"$1":')  // добавляем кавычки вокруг ключей
-            .replace(/,\s*}/g, '}');       // убираем лишние запятые
+            .replace(/'/g, '"')
+            .replace(/(\w+):/g, '"$1":')
+            .replace(/,\s*}/g, '}');
 
         console.log('Fixed string:', fixedString);
         jsonVars = JSON.parse(fixedString);
     } catch (e) {
         console.log('JSON parse failed, trying manual parse:', e);
 
-        // Ручной парсинг
         try {
-            // Удаляем внешние фигурные скобки
             var cleanStr = varsString.trim();
             if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {
                 cleanStr = cleanStr.substring(1, cleanStr.length - 1);
             }
 
-            // Разбиваем на основные пары (учитывая вложенные объекты)
             var pairs = [];
             var depth = 0;
             var current = '';
@@ -499,26 +525,26 @@ function executeAction(nameAction, callBack) {
                 pairs.push(current);
             }
 
-            // Обрабатываем каждую пару
-            for (var p of pairs) {
-                var colonIndex = p.indexOf(':');
+            for (var p = 0; p < pairs.length; p++) {
+                var pair = pairs[p];
+                var colonIndex = pair.indexOf(':');
                 if (colonIndex === -1) continue;
 
-                var key = p.substring(0, colonIndex).trim().replace(/['"]/g, '');
-                var valueStr = p.substring(colonIndex + 1).trim();
+                var key = pair.substring(0, colonIndex).trim().replace(/['"]/g, '');
+                var valueStr = pair.substring(colonIndex + 1).trim();
 
-                // Парсим значение (объект)
                 if (valueStr.startsWith('{') && valueStr.endsWith('}')) {
                     var obj = {};
                     var innerStr = valueStr.substring(1, valueStr.length - 1);
                     var innerPairs = innerStr.split(',');
 
-                    for (var inner of innerPairs) {
-                        var innerColon = inner.indexOf(':');
+                    for (var inner = 0; inner < innerPairs.length; inner++) {
+                        var innerPair = innerPairs[inner];
+                        var innerColon = innerPair.indexOf(':');
                         if (innerColon === -1) continue;
 
-                        var innerKey = inner.substring(0, innerColon).trim().replace(/['"]/g, '');
-                        var innerValue = inner.substring(innerColon + 1).trim().replace(/['"]/g, '');
+                        var innerKey = innerPair.substring(0, innerColon).trim().replace(/['"]/g, '');
+                        var innerValue = innerPair.substring(innerColon + 1).trim().replace(/['"]/g, '');
                         obj[innerKey] = innerValue;
                     }
                     jsonVars[key] = obj;
@@ -531,8 +557,8 @@ function executeAction(nameAction, callBack) {
         }
     }
 
-    var query_type = ctrlObj[0].getAttribute('query_type') || 'java';
-    var action_name = ctrlObj[0].getAttribute('action_name');
+    var query_type = ctrlObj.getAttribute('query_type') || 'java';
+    var action_name = ctrlObj.getAttribute('action_name');
 
     console.log('Action info:', {query_type, action_name});
     console.log('Parsed vars:', jsonVars);
@@ -550,7 +576,6 @@ function executeAction(nameAction, callBack) {
         var defaultVal = varInfo.defaultVal || '';
         var len = varInfo.len || '';
 
-        // Получаем значение в зависимости от типа
         if (srctype === 'var') {
             value = getVar(src) || defaultVal;
         } else if (srctype === 'ctrl') {
@@ -559,7 +584,6 @@ function executeAction(nameAction, callBack) {
             value = defaultVal;
         }
 
-        // Создаем объект переменной
         requestData[key] = {
             'srctype': srctype,
             'src': src,
@@ -575,12 +599,15 @@ function executeAction(nameAction, callBack) {
     console.log('Sending request data:', requestData);
     console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name);
 
-    $.ajax({
-        url: '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name,
+    fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name, {
         method: 'POST',
-        data: JSON.stringify(requestData),
-        dataType: 'json',
-        success: function(dataObj) {
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => response.json())
+        .then(dataObj => {
             console.log('Response received:', dataObj);
 
             if (dataObj.redirect) {
@@ -603,7 +630,6 @@ function executeAction(nameAction, callBack) {
                         var srctype = varInfo.srctype || 'var';
                         var src = varInfo.src || key;
 
-                        // Преобразуем специальные значения
                         if (value === 'null') value = null;
                         else if (value === 'true') value = true;
                         else if (value === 'false') value = false;
@@ -625,44 +651,38 @@ function executeAction(nameAction, callBack) {
             if (callBack) {
                 callBack(dataObj.vars || {});
             }
-        },
-        error: function(xhr, status, error) {
-            console.error('AJAX error:', error);
-            console.error('Status:', status);
-            console.error('Response:', xhr.responseText);
-        }
-    });
+        })
+        .catch((error, xhr, status) => {
+            console.error('Fetch error:', error);
+        });
 }
 
 /**
- * Функция обновления Dataset (SQL запросы преобразованные в PostgreSQL функции)
+ * Функция обновления Dataset
  * @param nameDataset - имя датасета из cmpDataset
  * @param callBack - функция обратного вызова
  */
 function refreshDataSet(nameDataset, callBack) {
-    var ctrlObj = $('[name="'+nameDataset+'"]');
-    if (!ctrlObj || ctrlObj.length === 0) {
+    var ctrlObj = document.querySelector('[name="' + nameDataset + '"]');
+    if (!ctrlObj) {
         console.error('Dataset not found:', nameDataset);
         return;
     }
 
     // Получаем строку с атрибутом vars
-    var varsString = ctrlObj[0].getAttribute('vars');
+    var varsString = ctrlObj.getAttribute('vars');
     console.log('Raw vars string:', varsString);
 
     var jsonVars;
 
-    // Специальный парсер для формата с одинарными кавычками
     function parseVarsString(str) {
         var result = {};
 
-        // Удаляем внешние фигурные скобки
         str = str.trim();
         if (str.startsWith('{') && str.endsWith('}')) {
             str = str.substring(1, str.length - 1);
         }
 
-        // Разбиваем на пары ключ-значение
         var pairs = [];
         var depth = 0;
         var current = '';
@@ -673,7 +693,7 @@ function refreshDataSet(nameDataset, callBack) {
 
             if (c === '{') depth++;
             else if (c === '}') depth--;
-            else if (c === "'" && str[i-1] !== '\\') inString = !inString;
+            else if (c === "'" && (i === 0 || str[i-1] !== '\\')) inString = !inString;
 
             if (c === ',' && depth === 0 && !inString) {
                 pairs.push(current);
@@ -686,26 +706,26 @@ function refreshDataSet(nameDataset, callBack) {
             pairs.push(current);
         }
 
-        // Обрабатываем каждую пару
-        for (var p of pairs) {
-            var colonIndex = p.indexOf(':');
+        for (var p = 0; p < pairs.length; p++) {
+            var pair = pairs[p];
+            var colonIndex = pair.indexOf(':');
             if (colonIndex === -1) continue;
 
-            var key = p.substring(0, colonIndex).trim().replace(/^'|'$/g, '');
-            var valueStr = p.substring(colonIndex + 1).trim();
+            var key = pair.substring(0, colonIndex).trim().replace(/^'|'$/g, '');
+            var valueStr = pair.substring(colonIndex + 1).trim();
 
-            // Парсим значение (объект)
             if (valueStr.startsWith('{') && valueStr.endsWith('}')) {
                 var obj = {};
                 var innerStr = valueStr.substring(1, valueStr.length - 1);
                 var innerPairs = innerStr.split(',');
 
-                for (var inner of innerPairs) {
-                    var innerColon = inner.indexOf(':');
+                for (var inner = 0; inner < innerPairs.length; inner++) {
+                    var innerPair = innerPairs[inner];
+                    var innerColon = innerPair.indexOf(':');
                     if (innerColon === -1) continue;
 
-                    var innerKey = inner.substring(0, innerColon).trim().replace(/^'|'$/g, '');
-                    var innerValue = inner.substring(innerColon + 1).trim().replace(/^'|'$/g, '');
+                    var innerKey = innerPair.substring(0, innerColon).trim().replace(/^'|'$/g, '');
+                    var innerValue = innerPair.substring(innerColon + 1).trim().replace(/^'|'$/g, '');
                     obj[innerKey] = innerValue;
                 }
                 result[key] = obj;
@@ -723,9 +743,9 @@ function refreshDataSet(nameDataset, callBack) {
         return;
     }
 
-    var query_type = ctrlObj[0].getAttribute('query_type');
-    var db = ctrlObj[0].getAttribute('db');
-    var dataset_name = ctrlObj[0].getAttribute('dataset_name');
+    var query_type = ctrlObj.getAttribute('query_type');
+    var db = ctrlObj.getAttribute('db');
+    var dataset_name = ctrlObj.getAttribute('dataset_name');
 
     console.log('Dataset info:', {query_type, db, dataset_name});
 
@@ -736,7 +756,6 @@ function refreshDataSet(nameDataset, callBack) {
         var varInfo = jsonVars[key];
         var value = '';
 
-        // Получаем значение в зависимости от типа
         if (varInfo['srctype'] === 'var') {
             value = getVar(varInfo['src']) || varInfo['defaultVal'] || '';
         } else if (varInfo['srctype'] === 'ctrl') {
@@ -745,7 +764,6 @@ function refreshDataSet(nameDataset, callBack) {
             value = varInfo['defaultVal'] || '';
         }
 
-        // Создаем объект переменной
         requestData[key] = {
             'srctype': varInfo['srctype'],
             'src': varInfo['src'],
@@ -760,12 +778,15 @@ function refreshDataSet(nameDataset, callBack) {
 
     console.log('Sending request data:', requestData);
 
-    $.ajax({
-        url: '/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name,
+    fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name, {
         method: 'POST',
-        data: JSON.stringify(requestData),
-        dataType: 'json',
-        success: function(dataObj) {
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => response.json())
+        .then(dataObj => {
             console.log('Response received:', dataObj);
 
             if (dataObj['redirect']) {
@@ -774,14 +795,12 @@ function refreshDataSet(nameDataset, callBack) {
                 return;
             }
 
-            // Обрабатываем выходные переменные
             if (dataObj['vars_out']) {
                 var outVars = dataObj['vars_out'];
                 for (var key in outVars) {
                     var varInfo = outVars[key];
                     var value = varInfo['value'];
 
-                    // Преобразуем специальные значения
                     if (value === 'null') value = null;
                     else if (value === 'true') value = true;
                     else if (value === 'false') value = false;
@@ -795,7 +814,6 @@ function refreshDataSet(nameDataset, callBack) {
                 }
             }
 
-            // Сохраняем данные в глобальном хранилище
             if (!D3Api.GLOBAL_DATA_SET[nameDataset]) {
                 D3Api.setDatasetAuto(nameDataset);
             }
@@ -803,15 +821,11 @@ function refreshDataSet(nameDataset, callBack) {
 
             console.log('Dataset data:', dataObj['data']);
 
-            // Вызываем callback
             if (callBack) {
                 callBack(dataObj['data']);
             }
-        },
-        error: function(xhr, status, error) {
-            console.error('AJAX error:', error);
-            console.error('Status:', status);
-            console.error('Response:', xhr.responseText);
-        }
-    });
+        })
+        .catch(error => {
+            console.error('Fetch error:', error);
+        });
 }
