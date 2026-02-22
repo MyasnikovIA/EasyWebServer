@@ -518,25 +518,106 @@ D3Api = new function () {
 
     /**
      * Инициализация сессии при загрузке страницы
+     * @param {Function} callback - Опциональная функция обратного вызова
      */
-    this.initSession = function() {
+    this.initSession = function(callback) {
         fetch('/{component}/session?action=getAll', {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
             }
         })
-            .then(response => response.json())
-            .then(function(data) {
-                GLOBAL_SESSION = data;
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP error ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Обновляем GLOBAL_SESSION
+                for (var key in data) {
+                    GLOBAL_SESSION[key] = data[key];
+                }
+
+                // Генерируем событие загрузки сессии
                 var event = new CustomEvent('sessionLoaded', {
                     detail: { data: data },
                     bubbles: true
                 });
                 document.dispatchEvent(event);
+
+                // Вызываем callback только если он существует и является функцией
+                if (callback && typeof callback === 'function') {
+                    callback(null, data);
+                }
             })
-            .catch(error => console.error('Error loading session:', error));
-    }
+            .catch(error => {
+                console.error('Error loading session:', error);
+
+                // Генерируем событие ошибки
+                var errorEvent = new CustomEvent('sessionError', {
+                    detail: { error: error.message },
+                    bubbles: true
+                });
+                document.dispatchEvent(event);
+
+                // Вызываем callback только если он существует и является функцией
+                if (callback && typeof callback === 'function') {
+                    callback(error);
+                }
+            });
+    };
+
+
+    /**
+     * Получение всех данных сессии
+     * @param {Function} callback - Функция обратного вызова
+     */
+    this.getAllSession = function(callback) {
+        fetch('/{component}/session?action=getAll', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP error ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                callback(null, data);
+            })
+            .catch(error => {
+                console.error('Error getting all session:', error);
+                callback(error);
+            });
+    };
+    /**
+     * Удаление данных из сессии
+     * @param {string} name - Имя сессионной переменной
+     * @param {Function} callback - Функция обратного вызова
+     */
+    this.removeSession = function(name, callback) {
+        fetch('/{component}/session?remove_session=' + encodeURIComponent(name), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: '{}'
+        })
+            .then(response => response.json())
+            .then(result => {
+                console.log("Session removed:", name);
+                if (callback) callback(null, result);
+            })
+            .catch(error => {
+                console.error('Error removing session:', error);
+                if (callback) callback(error);
+            });
+    };
+
 
     // ============== Методы для обратной совместимости ==============
 
@@ -827,44 +908,103 @@ D3Api = new function () {
      * @param {string} name - Имя сессионной переменной
      * @param {Object} objJson - Данные для сохранения
      */
-    this.setSession = function(name, objJson) {
-        fetch('/{component}/session?set_session=' + name, {
+    this.setSession = function(name, data, callback) {
+        // Если data не объект, преобразуем в объект
+        var dataToSend = typeof data === 'object' ? data : { value: data };
+
+        fetch('/{component}/session?set_session=' + encodeURIComponent(name), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(objJson)
+            body: JSON.stringify(dataToSend)
         })
-            .then(response => response.json())
-            .then(dataObj => {
-                console.log("Session saved:", name);
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP error ' + response.status);
+                }
+                return response.json();
             })
-            .catch(error => console.error('Error:', error));
+            .then(result => {
+                console.log("Session saved:", name, result);
+                if (callback) callback(null, result);
+            })
+            .catch(error => {
+                console.error('Error saving session:', error);
+                if (callback) callback(error);
+            });
     };
 
     /**
      * Получение данных из сессии
      * @param {string} name - Имя сессионной переменной
-     * @returns {Object} Данные из сессии
+     * @param {Function} callback - Функция обратного вызова (опционально)
+     * @returns {Object|string|number|boolean|null} - Данные из сессии (если callback не указан)
      */
-    this.getSession = function(name) {
-        var resObj = {};
+    this.getSession = function(name, callback) {
+        if (callback) {
+            // Асинхронный режим
+            fetch('/{component}/session?get_session=' + encodeURIComponent(name), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: '{}'
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP error ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Проверяем, содержит ли ответ только одно поле "value"
+                    if (data && typeof data === 'object') {
+                        var keys = Object.keys(data);
+                        if (keys.length === 1 && keys[0] === 'value') {
+                            // Возвращаем только значение поля value
+                            callback(null, data.value);
+                        } else {
+                            // Возвращаем весь объект
+                            callback(null, data);
+                        }
+                    } else {
+                        callback(null, data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error getting session:', error);
+                    callback(error);
+                });
+            return null;
+        } else {
+            // Синхронный режим для обратной совместимости
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/{component}/session?get_session=' + encodeURIComponent(name), false);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send('{}');
 
-        // Синхронный XHR для совместимости (async=false)
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/{component}/session?get_session=' + name, false);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.send('{}');
+            if (xhr.status === 200) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
 
-        if (xhr.status === 200) {
-            try {
-                resObj = JSON.parse(xhr.responseText);
-            } catch (e) {
-                console.error('JSON parse error:', e);
+                    // Проверяем, содержит ли ответ только одно поле "value"
+                    if (data && typeof data === 'object') {
+                        var keys = Object.keys(data);
+                        if (keys.length === 1 && keys[0] === 'value') {
+                            // Возвращаем только значение поля value
+                            return data.value;
+                        }
+                    }
+
+                    return data;
+                } catch (e) {
+                    console.error('JSON parse error:', e);
+                    return {};
+                }
             }
+            return {};
         }
-
-        return resObj;
     };
 
     /**
@@ -913,19 +1053,18 @@ D3Api = new function () {
 window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
 
 document.addEventListener("DOMContentLoaded", function() {
-    D3Api.initSession();
-
-    var elementsWithNameAttribute = D3Api.D3MainContainer.querySelectorAll('[name][cmptype]');
-
-    for (var i = 0; i < elementsWithNameAttribute.length; i++) {
-        var ctrlObj = elementsWithNameAttribute[i];
-        if (ctrlObj.getAttribute('cmptype')) {
-            var cmptype = ctrlObj.getAttribute('cmptype').toLowerCase();
-            if ((cmptype === 'action') || (cmptype === 'dataset')) continue;
+    D3Api.initSession(function() {
+        var elementsWithNameAttribute = D3Api.D3MainContainer.querySelectorAll('[name][cmptype]');
+        for (var i = 0; i < elementsWithNameAttribute.length; i++) {
+            var ctrlObj = elementsWithNameAttribute[i];
+            if (ctrlObj.getAttribute('cmptype')) {
+                var cmptype = ctrlObj.getAttribute('cmptype').toLowerCase();
+                if ((cmptype === 'action') || (cmptype === 'dataset')) continue;
+            }
+            var nameCtrl = ctrlObj.getAttribute('name');
+            D3Api.setControlAuto(nameCtrl, ctrlObj);
         }
-        var nameCtrl = ctrlObj.getAttribute('name');
-        D3Api.setControlAuto(nameCtrl, ctrlObj);
-    }
+    });
 });
 
 // ============== Глобальные функции-обертки для обратной совместимости ==============
@@ -951,7 +1090,7 @@ function logout() {
 }
 
 function setSession(name, objJson) {
-    D3Api.setSession(name, objJson);
+    return D3Api.setSession(name, objJson);
 }
 
 function getSession(name) {
