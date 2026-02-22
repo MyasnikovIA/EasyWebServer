@@ -52,6 +52,10 @@ public class cmpAction extends Base {
             query_type = element.attributes().get("query_type");
         }
 
+        // Получаем схему PostgreSQL (по умолчанию "public")
+        String pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
+        attrsDst.add("pg_schema", pgSchema);
+
         // Формирование имени функции
         String docPath = doc.attr("doc_path");
         String rootPath = doc.attr("rootPath");
@@ -144,16 +148,22 @@ public class cmpAction extends Base {
                     System.out.println("Compiled Java function: " + functionName);
                 }
             } else if (query_type.equals("sql")) {
-                String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
+                String fullFunctionName = pgSchema + "." + functionName;
+
+                // Проверяем режим отладки из сессии документа
+                boolean debugMode = false;
+                if (doc.hasAttr("debug_mode")) {
+                    debugMode = Boolean.parseBoolean(doc.attr("debug_mode"));
+                }
 
                 // Проверяем, нужно ли создавать функцию
-                boolean needToCreate = ServerConstant.config.DEBUG; // В режиме debug всегда создаем
+                boolean needToCreate = debugMode; // В режиме debug всегда создаем
                 if (!needToCreate) {
                     // Проверяем кэш наличия функции
                     Boolean exists = functionExistsCache.get(fullFunctionName);
                     if (exists == null) {
                         // Если в кэше нет, делаем запрос к БД
-                        exists = checkFunctionExistsInDB(fullFunctionName);
+                        exists = checkFunctionExistsInDB(fullFunctionName, pgSchema);
                         functionExistsCache.put(fullFunctionName, exists);
                         System.out.println("Function " + fullFunctionName + " exists in DB: " + exists);
                     }
@@ -161,7 +171,7 @@ public class cmpAction extends Base {
                 }
 
                 if (needToCreate) {
-                    createSQLFunctionPG(fullFunctionName, this, element, docPath + " (" + element.attr("name") + ")");
+                    createSQLFunctionPG(fullFunctionName, pgSchema, this, element, docPath + " (" + element.attr("name") + ")");
                     // После создания обновляем кэш
                     functionExistsCache.put(fullFunctionName, true);
                 } else {
@@ -190,16 +200,24 @@ public class cmpAction extends Base {
     }
 
     /**
-     * Проверка существования функции в БД с использованием EXISTS
+     * Проверка существования функции в БД с использованием EXISTS с учетом схемы
      */
-    private boolean checkFunctionExistsInDB(String fullFunctionName) {
+    private boolean checkFunctionExistsInDB(String fullFunctionName, String schema) {
         Connection conn = null;
         try {
             conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
             if (conn == null) return false;
 
             Statement stmt = conn.createStatement();
-            String sql = "SELECT EXISTS(SELECT 1 FROM pg_proc WHERE proname = '" + fullFunctionName + "') AS function_exists";
+            // Извлекаем имя функции без схемы
+            String functionName = fullFunctionName;
+            if (fullFunctionName.contains(".")) {
+                functionName = fullFunctionName.substring(fullFunctionName.lastIndexOf('.') + 1);
+            }
+
+            String sql = "SELECT EXISTS(SELECT 1 FROM pg_proc p " +
+                    "JOIN pg_namespace n ON p.pronamespace = n.oid " +
+                    "WHERE n.nspname = '" + schema + "' AND p.proname = '" + functionName + "') AS function_exists";
             System.out.println("Checking function existence: " + sql);
             ResultSet rs = stmt.executeQuery(sql);
 
@@ -226,7 +244,7 @@ public class cmpAction extends Base {
      */
     private boolean functionExistsInDB(String functionName) {
         String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
-        return checkFunctionExistsInDB(fullFunctionName);
+        return checkFunctionExistsInDB(fullFunctionName, "public");
     }
 
     /**
@@ -267,13 +285,22 @@ public class cmpAction extends Base {
         System.out.println("Action called - Raw vars: " + vars.toString());
 
         String query_type = queryProperty.optString("query_type", "java");
-        String action_name = ServerConstant.config.APP_NAME + "_" + queryProperty.optString("action_name", "");
-        action_name = action_name.replaceAll("[^a-zA-Z0-9_]", "");
+        String action_name = queryProperty.optString("action_name", "");
+        String pg_schema = queryProperty.optString("pg_schema", "public");
 
-        System.out.println("Action name: " + action_name);
+        // Формируем полное имя функции со схемой
+        String fullActionName;
+        if (action_name.contains(".")) {
+            fullActionName = action_name; // уже содержит схему
+        } else {
+            fullActionName = pg_schema + "." + action_name;
+        }
+
+        System.out.println("Action name: " + fullActionName);
         System.out.println("Query type: " + query_type);
+        System.out.println("PG Schema: " + pg_schema);
 
-        if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(action_name)) {
+        if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(fullActionName)) {
             // Подготавливаем переменные для Java функции - все как строки
             JSONObject varFun = new JSONObject();
             Iterator<String> keys = vars.keys();
@@ -300,7 +327,7 @@ public class cmpAction extends Base {
             System.out.println("Calling Java function with vars: " + varFun.toString());
 
             // Вызываем Java функцию
-            JSONObject resFun = ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.runFunction(action_name, varFun, session, null);
+            JSONObject resFun = ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.runFunction(fullActionName, varFun, session, null);
 
             System.out.println("Java function result: " + resFun.toString());
 
@@ -339,8 +366,8 @@ public class cmpAction extends Base {
         } else if (query_type.equals("sql")) {
             // Обработка SQL запросов
             try {
-                if (procedureList.containsKey(action_name)) {
-                    HashMap<String, Object> param = procedureList.get(action_name);
+                if (procedureList.containsKey(fullActionName)) {
+                    HashMap<String, Object> param = procedureList.get(fullActionName);
                     CallableStatement cs;
 
                     if (session.containsKey("DATABASE")) {
@@ -370,7 +397,13 @@ public class cmpAction extends Base {
 
                         List<String> varsArr = (List<String>) param.get("vars");
 
-                        if (ServerConstant.config.DEBUG) {
+                        // Проверяем режим отладки из сессии
+                        boolean debugMode = false;
+                        if (query.session != null && query.session.containsKey("debug_mode")) {
+                            debugMode = (boolean) query.session.get("debug_mode");
+                        }
+
+                        if (debugMode) {
                             result.put("SQL", ((String) param.get("SQL")).split("\n"));
                         }
 
@@ -418,7 +451,7 @@ public class cmpAction extends Base {
                 e.printStackTrace();
             }
         } else {
-            result.put("ERROR", "Function not found: " + action_name);
+            result.put("ERROR", "Function not found: " + fullActionName);
         }
 
         result.put("vars", vars);
@@ -427,9 +460,13 @@ public class cmpAction extends Base {
         return resultText.getBytes();
     }
 
-    private void createSQLFunctionPG(String functionName, Element elementThis, Element element, String fileName) {
+    private void createSQLFunctionPG(String functionName, String schema, Element elementThis, Element element, String fileName) {
         // Очищаем имя функции от недопустимых символов
-        functionName = functionName.replaceAll("[^a-zA-Z0-9_]", "");
+        String cleanFunctionName = functionName;
+        if (functionName.contains(".")) {
+            cleanFunctionName = functionName.substring(functionName.lastIndexOf('.') + 1);
+        }
+        cleanFunctionName = cleanFunctionName.replaceAll("[^a-zA-Z0-9_]", "");
 
         Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
         StringBuffer vars = new StringBuffer();
@@ -481,7 +518,7 @@ public class cmpAction extends Base {
 
         StringBuffer sb = new StringBuffer();
         sb.append("CREATE OR REPLACE PROCEDURE ");
-        sb.append(functionName);
+        sb.append(schema).append(".").append(cleanFunctionName);
         sb.append("(");
         sb.append(varsStr);
         sb.append(") LANGUAGE ");
@@ -494,12 +531,12 @@ public class cmpAction extends Base {
         sb.append(element.text().trim());
         sb.append("\nEND;$$\n");
 
-        System.out.println("Creating procedure: " + functionName);
+        System.out.println("Creating procedure: " + schema + "." + cleanFunctionName);
         System.out.println("SQL: " + sb.toString());
 
-        createProcedure(conn, functionName, sb.toString());
+        createProcedure(conn, schema + "." + cleanFunctionName, sb.toString());
 
-        String prepareCall = "CALL " + functionName + "(" + varsCollStr + ");";
+        String prepareCall = "CALL " + schema + "." + cleanFunctionName + "(" + varsCollStr + ");";
 
         try {
             CallableStatement cs = conn.prepareCall(prepareCall);
@@ -516,6 +553,6 @@ public class cmpAction extends Base {
         param.put("varsArr", varsArr);
         param.put("SQL", sb.toString());
         param.put("prepareCall", prepareCall);
-        procedureList.put(functionName, param);
+        procedureList.put(schema + "." + cleanFunctionName, param);
     }
 }

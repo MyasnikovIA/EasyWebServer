@@ -51,6 +51,10 @@ public class cmpDataset extends Base {
             query_type = element.attributes().get("query_type");
         }
 
+        // Получаем схему PostgreSQL (по умолчанию "public")
+        String pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
+        attrsDst.add("pg_schema", pgSchema);
+
         // Исправленное формирование имени функции
         String docPath = doc.attr("doc_path");
         String rootPath = doc.attr("rootPath");
@@ -111,7 +115,7 @@ public class cmpDataset extends Base {
                 jsonVar.append("'src':'" + src + "',");
                 jsonVar.append("'srctype':'" + srctype + "'");
                 if (len.length()>0) jsonVar.append(",'len':'" + len + "'");
-                if (defaultVal.length()>0) jsonVar.append("'defaultVal':'" + defaultVal.replaceAll("'", "\\'") + "'");
+                if (defaultVal.length()>0) jsonVar.append(",'defaultVal':'" + defaultVal.replaceAll("'", "\\'") + "'");
                 jsonVar.append("},");
             }
         }
@@ -133,17 +137,23 @@ public class cmpDataset extends Base {
                     return;
                 }
             } else if (query_type.equals("sql")) {
-                String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
+                String fullFunctionName = pgSchema + "." + functionName;
+
+                // Проверяем режим отладки из сессии документа
+                boolean debugMode = false;
+                if (doc.hasAttr("debug_mode")) {
+                    debugMode = Boolean.parseBoolean(doc.attr("debug_mode"));
+                }
 
                 // Проверяем, нужно ли создавать функцию
-                boolean needToCreate = ServerConstant.config.DEBUG; // В режиме debug всегда создаем
+                boolean needToCreate = debugMode; // В режиме debug всегда создаем
 
                 if (!needToCreate) {
                     // Проверяем кэш наличия функции
                     Boolean exists = functionExistsCache.get(fullFunctionName);
                     if (exists == null) {
                         // Если в кэше нет, делаем запрос к БД
-                        exists = checkFunctionExistsInDB(fullFunctionName);
+                        exists = checkFunctionExistsInDB(fullFunctionName, pgSchema);
                         functionExistsCache.put(fullFunctionName, exists);
                         System.out.println("Function " + fullFunctionName + " exists in DB: " + exists);
                     }
@@ -153,7 +163,7 @@ public class cmpDataset extends Base {
                 }
 
                 if (needToCreate) {
-                    createSQL(fullFunctionName, this, element, docPath + " (" + element.attr("name") + ")");
+                    createSQL(fullFunctionName, pgSchema, this, element, docPath + " (" + element.attr("name") + ")");
                     // После создания обновляем кэш
                     functionExistsCache.put(fullFunctionName, true);
                 } else {
@@ -187,16 +197,24 @@ public class cmpDataset extends Base {
     }
 
     /**
-     * Проверка существования функции в БД с использованием EXISTS
+     * Проверка существования функции в БД с использованием EXISTS с учетом схемы
      */
-    private boolean checkFunctionExistsInDB(String fullFunctionName) {
+    private boolean checkFunctionExistsInDB(String fullFunctionName, String schema) {
         Connection conn = null;
         try {
             conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
             if (conn == null) return false;
 
             Statement stmt = conn.createStatement();
-            String sql = "SELECT EXISTS(SELECT 1 FROM pg_proc WHERE proname = '" + fullFunctionName + "') AS function_exists";
+            // Извлекаем имя функции без схемы
+            String functionName = fullFunctionName;
+            if (fullFunctionName.contains(".")) {
+                functionName = fullFunctionName.substring(fullFunctionName.lastIndexOf('.') + 1);
+            }
+
+            String sql = "SELECT EXISTS(SELECT 1 FROM pg_proc p " +
+                    "JOIN pg_namespace n ON p.pronamespace = n.oid " +
+                    "WHERE n.nspname = '" + schema + "' AND p.proname = '" + functionName + "') AS function_exists";
             System.out.println("Checking function existence: " + sql);
             ResultSet rs = stmt.executeQuery(sql);
 
@@ -223,7 +241,7 @@ public class cmpDataset extends Base {
      */
     private boolean functionExistsInDB(String functionName) {
         String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
-        return checkFunctionExistsInDB(fullFunctionName);
+        return checkFunctionExistsInDB(fullFunctionName, "public");
     }
 
     public static byte[] onPage(HttpExchange query) {
@@ -250,8 +268,18 @@ public class cmpDataset extends Base {
         JSONObject result = new JSONObject();
         result.put("data", new JSONArray("[]"));
         String query_type = queryProperty.getString("query_type");
-        String dataset_name = (ServerConstant.config.APP_NAME+"_" + queryProperty.getString("dataset_name")).toLowerCase();
-        if (ServerResourceHandler.javaStrExecut.existJavaFunction(dataset_name)) {
+        String dataset_name = queryProperty.getString("dataset_name");
+        String pg_schema = queryProperty.optString("pg_schema", "public");
+
+        // Формируем полное имя функции со схемой
+        String fullDatasetName;
+        if (dataset_name.contains(".")) {
+            fullDatasetName = dataset_name; // уже содержит схему
+        } else {
+            fullDatasetName = pg_schema + "." + dataset_name;
+        }
+
+        if (ServerResourceHandler.javaStrExecut.existJavaFunction(fullDatasetName)) {
             JSONObject varFun = new JSONObject();
             Iterator<String> keys = vars.keys();
             while (keys.hasNext()) {
@@ -275,7 +303,7 @@ public class cmpDataset extends Base {
             }
 
             JSONArray dataRes = new JSONArray();
-            JSONObject resFun = ServerResourceHandler.javaStrExecut.runFunction(dataset_name, varFun, session, dataRes);
+            JSONObject resFun = ServerResourceHandler.javaStrExecut.runFunction(fullDatasetName, varFun, session, dataRes);
             JSONObject returnVar = new JSONObject();
             keys = vars.keys();
             while (keys.hasNext()) {
@@ -293,9 +321,9 @@ public class cmpDataset extends Base {
             result.put("vars_out", returnVar);
         } else if (query_type.equals("sql")) {
             try {
-                if (procedureList.containsKey(dataset_name)) {
+                if (procedureList.containsKey(fullDatasetName)) {
                     CallableStatement selectFunctionStatement = null;
-                    HashMap<String, Object> param = procedureList.get(dataset_name);
+                    HashMap<String, Object> param = procedureList.get(fullDatasetName);
                     String prepareCall = (String) param.get("prepareCall");
                     if (session.containsKey("DATABASE")) {
                         // Если в сессии есть информация о подключении к БД, тогда подключаемся
@@ -323,9 +351,17 @@ public class cmpDataset extends Base {
                     // Connection conn = (Connection) param.get("connect");
                     // String prepareCall = (String) param.get("prepareCall");
                     List<String> varsArr = (List<String>) param.get("vars");
-                    if (ServerConstant.config.DEBUG) {
+
+                    // Проверяем режим отладки из сессии
+                    boolean debugMode = false;
+                    if (query.session != null && query.session.containsKey("debug_mode")) {
+                        debugMode = (boolean) query.session.get("debug_mode");
+                    }
+
+                    if (debugMode) {
                         result.put("SQL", ((String) param.get("SQL")).split("\n"));
                     }
+
                     int ind = 0;
                     for (String varNameOne : varsArr) {
                         JSONObject varOne = vars.getJSONObject(varNameOne);
@@ -407,8 +443,20 @@ public class cmpDataset extends Base {
         }
     }
 
-    private void createSQL(String functionName, Element elementThis, Element element, String fileName) {
-        if (procedureList.containsKey(functionName) && !ServerConstant.config.DEBUG) {
+    private void createSQL(String functionName, String schema, Element elementThis, Element element, String fileName) {
+        // Очищаем имя функции
+        String cleanFunctionName = functionName;
+        if (functionName.contains(".")) {
+            cleanFunctionName = functionName.substring(functionName.lastIndexOf('.') + 1);
+        }
+
+        // Проверяем режим отладки из сессии
+        boolean debugMode = false;
+        if (elementThis.ownerDocument().hasAttr("debug_mode")) {
+            debugMode = Boolean.parseBoolean(elementThis.ownerDocument().attr("debug_mode"));
+        }
+
+        if (procedureList.containsKey(functionName) && !debugMode) {
             // Если функция уже создана в БД и режим отладки отключен, тогда пропускаем создание новой функции
             return;
         }
@@ -494,7 +542,7 @@ public class cmpDataset extends Base {
 
         // Формируем функцию
         StringBuffer sb = new StringBuffer();
-        sb.append("CREATE OR REPLACE FUNCTION ").append(functionName).append("(");
+        sb.append("CREATE OR REPLACE FUNCTION ").append(schema).append(".").append(cleanFunctionName).append("(");
         sb.append(jsonVarStr);
         sb.append(")\n");
         sb.append("RETURNS JSON AS\n");
@@ -535,7 +583,7 @@ public class cmpDataset extends Base {
 
             // Удаляем старую функцию если существует
             try {
-                stmt.execute("DROP FUNCTION IF EXISTS " + functionName + " CASCADE;");
+                stmt.execute("DROP FUNCTION IF EXISTS " + schema + "." + cleanFunctionName + " CASCADE;");
             } catch (SQLException e) {
                 System.err.println("Error dropping function: " + e.getMessage());
             }
@@ -544,7 +592,7 @@ public class cmpDataset extends Base {
             PreparedStatement createFunctionStatement = conn.prepareStatement(createFunctionSQL);
             createFunctionStatement.execute();
 
-            String prepareCall = "SELECT " + functionName + "(" + varsCollStr + ");";
+            String prepareCall = "SELECT " + schema + "." + cleanFunctionName + "(" + varsCollStr + ");";
             CallableStatement selectFunctionStatement = conn.prepareCall(prepareCall);
 
             param.put("selectFunctionStatement", selectFunctionStatement);
@@ -552,9 +600,9 @@ public class cmpDataset extends Base {
             param.put("connect", conn);
             param.put("SQL", createFunctionSQL);
 
-            procedureList.put(functionName, param);
+            procedureList.put(schema + "." + cleanFunctionName, param);
 
-            System.out.println("Function " + functionName + " created successfully");
+            System.out.println("Function " + schema + "." + cleanFunctionName + " created successfully");
 
         } catch (SQLException e) {
             System.err.println("Error creating function: " + e.getMessage());

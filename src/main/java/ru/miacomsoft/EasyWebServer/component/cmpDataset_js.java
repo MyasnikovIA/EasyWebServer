@@ -234,7 +234,7 @@ public class cmpDataset_js {
         sb.append("\n");
         sb.append("        console.log('Sending request data:', requestData);\n");
         sb.append("\n");
-        sb.append("        fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name, {\n");
+        sb.append("        fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {\n");
         sb.append("            method: 'POST',\n");
         sb.append("            headers: {\n");
         sb.append("                'Content-Type': 'application/json'\n");

@@ -219,9 +219,9 @@ public class cmpAction_js {
         sb.append("        }\n");
         sb.append("\n");
         sb.append("        console.log('Sending request data:', requestData);\n");
-        sb.append("        console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name);\n");
+        sb.append("        console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public');\n");
         sb.append("\n");
-        sb.append("        fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name, {\n");
+        sb.append("        fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {\n\n");
         sb.append("            method: 'POST',\n");
         sb.append("            headers: {\n");
         sb.append("                'Content-Type': 'application/json'\n");
