@@ -269,7 +269,7 @@ public class cmpDataset extends Base {
     }
 
     public static byte[] onPage(HttpExchange query) {
-        query.mimeType = "application/json"; // Изменить mime ответа
+        query.mimeType = "application/json";
         Map<String, Object> session = query.session;
         JSONObject queryProperty = query.requestParam;
         JSONObject vars;
@@ -314,7 +314,7 @@ public class cmpDataset extends Base {
         // Формируем полное имя функции со схемой
         String fullDatasetName;
         if (dataset_name.contains(".")) {
-            fullDatasetName = dataset_name; // уже содержит схему
+            fullDatasetName = dataset_name;
         } else {
             fullDatasetName = pg_schema + "." + dataset_name;
         }
@@ -322,14 +322,13 @@ public class cmpDataset extends Base {
         System.out.println("Full dataset name: " + fullDatasetName);
         System.out.println("Query type: " + query_type);
 
-        // Проверяем режим отладки из сессии
         boolean debugMode = false;
         if (query.session != null && query.session.containsKey("debug_mode")) {
             debugMode = (boolean) query.session.get("debug_mode");
         }
 
         if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(fullDatasetName)) {
-            // Обработка Java функции
+            // Обработка Java функции (без изменений)
             try {
                 JSONObject varFun = new JSONObject();
                 Iterator<String> keys = vars.keys();
@@ -369,7 +368,6 @@ public class cmpDataset extends Base {
             }
 
         } else if (query_type.equals("sql")) {
-            // Обработка SQL запроса
             Connection conn = null;
             CallableStatement selectFunctionStatement = null;
             ResultSet rs = null;
@@ -384,14 +382,14 @@ public class cmpDataset extends Base {
                 System.out.println("Found procedure in list: " + fullDatasetName);
 
                 HashMap<String, Object> param = procedureList.get(fullDatasetName);
+                Map<String, String> varTypes = (Map<String, String>) param.get("varTypes");
 
-                // Получаем соединение с БД
+                // Получаем соединение с БД (без изменений)
                 if (session.containsKey("DATABASE")) {
                     HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
 
                     if (data_base.containsKey("CONNECT")) {
                         conn = (Connection) data_base.get("CONNECT");
-                        // Проверяем, не закрыто ли соединение
                         try {
                             if (conn == null || conn.isClosed()) {
                                 System.out.println("Connection is closed, reconnecting...");
@@ -418,7 +416,6 @@ public class cmpDataset extends Base {
                         }
                     }
                 } else {
-                    // Используем системного пользователя
                     System.out.println("Using system connection...");
                     conn = getConnect(ServerConstant.config.DATABASE_USER_NAME,
                             ServerConstant.config.DATABASE_USER_PASS);
@@ -443,11 +440,16 @@ public class cmpDataset extends Base {
                 List<String> varsArr = (List<String>) param.get("vars");
                 System.out.println("Vars array: " + varsArr);
 
-                // Устанавливаем параметры
+                // Устанавливаем параметры с преобразованием типов
                 int ind = 0;
                 for (String varNameOne : varsArr) {
                     ind++;
                     String valueStr = "";
+                    String targetType = "string";
+
+                    if (varTypes != null && varTypes.containsKey(varNameOne)) {
+                        targetType = varTypes.get(varNameOne);
+                    }
 
                     if (vars.has(varNameOne)) {
                         Object varObj = vars.get(varNameOne);
@@ -469,11 +471,87 @@ public class cmpDataset extends Base {
                         }
                     }
 
-                    System.out.println("Setting parameter " + ind + " (" + varNameOne + "): " + valueStr);
-                    selectFunctionStatement.setString(ind, valueStr);
+                    System.out.println("Setting parameter " + ind + " (" + varNameOne + "): " + valueStr + " (type: " + targetType + ")");
+
+                    // Преобразуем значение в соответствии с целевым типом
+                    try {
+                        switch (targetType) {
+                            case "integer":
+                            case "int":
+                                if (valueStr.isEmpty()) {
+                                    selectFunctionStatement.setNull(ind, Types.INTEGER);
+                                } else {
+                                    selectFunctionStatement.setInt(ind, Integer.parseInt(valueStr));
+                                }
+                                break;
+                            case "bigint":
+                            case "long":
+                                if (valueStr.isEmpty()) {
+                                    selectFunctionStatement.setNull(ind, Types.BIGINT);
+                                } else {
+                                    selectFunctionStatement.setLong(ind, Long.parseLong(valueStr));
+                                }
+                                break;
+                            case "decimal":
+                            case "numeric":
+                                if (valueStr.isEmpty()) {
+                                    selectFunctionStatement.setNull(ind, Types.NUMERIC);
+                                } else {
+                                    selectFunctionStatement.setBigDecimal(ind, new java.math.BigDecimal(valueStr));
+                                }
+                                break;
+                            case "boolean":
+                            case "bool":
+                                if (valueStr.isEmpty()) {
+                                    selectFunctionStatement.setNull(ind, Types.BOOLEAN);
+                                } else {
+                                    selectFunctionStatement.setBoolean(ind, Boolean.parseBoolean(valueStr));
+                                }
+                                break;
+                            case "json":
+                            case "jsonb":
+                                if (valueStr.isEmpty()) {
+                                    selectFunctionStatement.setNull(ind, Types.OTHER);
+                                } else {
+                                    // Для JSON используем setObject с указанием типа
+                                    selectFunctionStatement.setObject(ind, valueStr, Types.OTHER);
+                                }
+                                break;
+                            case "array":
+                                if (valueStr.isEmpty()) {
+                                    selectFunctionStatement.setNull(ind, Types.ARRAY);
+                                } else {
+                                    // Парсим JSON массив в массив PostgreSQL
+                                    try {
+                                        JSONArray jsonArray = new JSONArray(valueStr);
+                                        String[] stringArray = new String[jsonArray.length()];
+                                        for (int i = 0; i < jsonArray.length(); i++) {
+                                            stringArray[i] = jsonArray.getString(i);
+                                        }
+                                        Array array = conn.createArrayOf("text", stringArray);
+                                        selectFunctionStatement.setArray(ind, array);
+                                    } catch (Exception e) {
+                                        // Если не удалось распарсить как JSON массив, используем строку
+                                        selectFunctionStatement.setString(ind, valueStr);
+                                    }
+                                }
+                                break;
+                            case "string":
+                            default:
+                                if (valueStr.isEmpty() && valueStr.length() == 0) {
+                                    selectFunctionStatement.setNull(ind, Types.VARCHAR);
+                                } else {
+                                    selectFunctionStatement.setString(ind, valueStr);
+                                }
+                                break;
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Error converting parameter " + varNameOne + " to type " + targetType + ": " + e.getMessage());
+                        // В случае ошибки преобразования, передаем как строку
+                        selectFunctionStatement.setString(ind, valueStr);
+                    }
                 }
 
-                // Выполняем запрос с таймаутом
                 System.out.println("Executing query...");
                 boolean hasResults = selectFunctionStatement.execute();
                 System.out.println("Query executed, hasResults: " + hasResults);
@@ -511,14 +589,12 @@ public class cmpDataset extends Base {
                 e.printStackTrace();
                 result.put("ERROR", "Error: " + e.getMessage());
             } finally {
-                // Закрываем ресурсы
                 try {
                     if (rs != null) rs.close();
                 } catch (Exception e) {}
                 try {
                     if (selectFunctionStatement != null) selectFunctionStatement.close();
                 } catch (Exception e) {}
-                // НЕ закрываем connection, так как он может использоваться повторно
             }
         } else {
             result.put("ERROR", "Unsupported query type: " + query_type);
@@ -553,7 +629,7 @@ public class cmpDataset extends Base {
         }
     }
 
-    // Исправленный метод createSQL - поддержка INOUT параметров
+    // Исправленный метод createSQL - определение направления по len и поддержка type
     private void createSQL(String functionName, String schema, Element element, String fileName, boolean debugMode) {
         // Очищаем имя функции
         String cleanFunctionName = functionName;
@@ -579,13 +655,13 @@ public class cmpDataset extends Base {
 
         StringBuffer vars = new StringBuffer();
         StringBuffer varsColl = new StringBuffer();
-        StringBuffer varsOut = new StringBuffer();
         Attributes attrs = element.attributes();
         HashMap<String, Object> param = new HashMap<String, Object>();
         String language = RemoveArrKeyRtrn(attrs, "language", "plpgsql");
         param.put("language", language);
         List<String> varsArr = new ArrayList<>();
         List<String> varsOutArr = new ArrayList<>();
+        Map<String, String> varTypes = new HashMap<>(); // Храним типы переменных
         String beforeCodeBloc = "";
         String declareBlocText = "";
         String afterCodeBloc = "";
@@ -627,38 +703,75 @@ public class cmpDataset extends Base {
                 Attributes attrsItem = itemElement.attributes();
                 String nameItem = RemoveArrKeyRtrn(attrsItem, "name", "");
                 String len = RemoveArrKeyRtrn(attrsItem, "len", "");
-                String direction = RemoveArrKeyRtrn(attrsItem, "direction", "IN"); // IN, OUT, INOUT
-                String typeVar = "VARCHAR";
-                if (len.length() > 0) {
-                    typeVar = "VARCHAR(" + len + ")";
+                String type = RemoveArrKeyRtrn(attrsItem, "type", ""); // string, integer, array, json
+
+                // Определяем SQL тип
+                String sqlType = "VARCHAR";
+
+                if (!type.isEmpty()) {
+                    // Если тип указан явно
+                    switch (type.toLowerCase()) {
+                        case "integer":
+                        case "int":
+                            sqlType = "INTEGER";
+                            break;
+                        case "bigint":
+                        case "long":
+                            sqlType = "BIGINT";
+                            break;
+                        case "decimal":
+                        case "numeric":
+                            sqlType = "NUMERIC";
+                            break;
+                        case "boolean":
+                        case "bool":
+                            sqlType = "BOOLEAN";
+                            break;
+                        case "date":
+                            sqlType = "DATE";
+                            break;
+                        case "timestamp":
+                            sqlType = "TIMESTAMP";
+                            break;
+                        case "json":
+                        case "jsonb":
+                            sqlType = "JSONB";
+                            break;
+                        case "array":
+                            sqlType = "TEXT[]";
+                            break;
+                        case "string":
+                        default:
+                            if (len.length() > 0 && !len.equals("-1")) {
+                                sqlType = "VARCHAR(" + len + ")";
+                            } else {
+                                sqlType = "TEXT";
+                            }
+                            break;
+                    }
+                } else {
+                    // Автоматическое определение типа по len
+                    if (len.length() > 0 && !len.equals("-1")) {
+                        sqlType = "VARCHAR(" + len + ")";
+                    } else if (len.equals("-1")) {
+                        sqlType = "TEXT";
+                    } else {
+                        sqlType = "VARCHAR"; // По умолчанию VARCHAR без ограничения
+                    }
                 }
-                typeVar = RemoveArrKeyRtrn(attrsItem, "type", typeVar);
 
                 varsArr.add(nameItem);
+                varTypes.put(nameItem, type.isEmpty() ? "string" : type.toLowerCase());
 
-                if (direction.equalsIgnoreCase("OUT")) {
-                    // OUT параметры только для возврата
-                    varsOut.append(nameItem);
-                    varsOut.append(" OUT ");
-                    varsOut.append(typeVar);
-                    varsOut.append(",");
-                    varsOutArr.add(nameItem);
-                } else if (direction.equalsIgnoreCase("INOUT")) {
-                    // INOUT параметры
-                    vars.append(nameItem);
-                    vars.append(" INOUT ");
-                    vars.append(typeVar);
-                    vars.append(",");
-                    varsColl.append("?,");
-                    varsOutArr.add(nameItem);
-                } else {
-                    // IN параметры (по умолчанию)
-                    vars.append(nameItem);
-                    vars.append(" IN ");
-                    vars.append(typeVar);
-                    vars.append(",");
-                    varsColl.append("?,");
-                }
+                // Определяем направление: если есть len (даже пустой), то параметр считается входным
+                // Выходные параметры возвращаются через JSON, поэтому все параметры IN
+                vars.append(nameItem);
+                vars.append(" IN ");
+                vars.append(sqlType);
+                vars.append(",");
+                varsColl.append("?,");
+
+                System.out.println("Parameter " + nameItem + ": type=" + sqlType + ", direction=IN, len=" + len);
             }
         }
 
@@ -668,28 +781,13 @@ public class cmpDataset extends Base {
             varsStr = varsStr.substring(0, varsStr.length() - 1);
         }
 
-        String varsOutStr = varsOut.toString();
-        if (varsOutStr.length() > 0) {
-            varsOutStr = varsOutStr.substring(0, varsOutStr.length() - 1);
-        }
-
         String varsCollStr = varsColl.toString();
         if (varsCollStr.length() > 0) {
             varsCollStr = varsCollStr.substring(0, varsCollStr.length() - 1);
         }
 
-        // Объединяем IN и OUT параметры
-        String allParams = varsStr;
-        if (varsOutStr.length() > 0) {
-            if (allParams.length() > 0) {
-                allParams += "," + varsOutStr;
-            } else {
-                allParams = varsOutStr;
-            }
-        }
-
         param.put("vars", varsArr);
-        param.put("varsOut", varsOutArr);
+        param.put("varTypes", varTypes); // Сохраняем типы для использования в onPage
 
         // Получаем основной SQL запрос
         String mainSql = element.text().trim();
@@ -699,7 +797,7 @@ public class cmpDataset extends Base {
         // Формируем функцию
         StringBuffer sb = new StringBuffer();
         sb.append("CREATE OR REPLACE FUNCTION ").append(schema).append(".").append(cleanFunctionName).append("(");
-        sb.append(allParams);
+        sb.append(varsStr);
         sb.append(")\n");
         sb.append("RETURNS JSON AS\n");
         sb.append("$$\n");

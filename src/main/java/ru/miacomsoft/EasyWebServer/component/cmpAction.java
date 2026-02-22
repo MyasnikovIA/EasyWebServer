@@ -1,5 +1,6 @@
 package ru.miacomsoft.EasyWebServer.component;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.jsoup.nodes.Attribute;
 import org.jsoup.nodes.Attributes;
@@ -9,12 +10,7 @@ import org.jsoup.select.Elements;
 import ru.miacomsoft.EasyWebServer.HttpExchange;
 import ru.miacomsoft.EasyWebServer.ServerConstant;
 
-import java.sql.CallableStatement;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Types;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.*;
 
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.*;
@@ -429,6 +425,7 @@ public class cmpAction extends Base {
                 System.out.println("Found procedure in list: " + fullActionName);
 
                 HashMap<String, Object> param = procedureList.get(fullActionName);
+                Map<String, String> varTypes = (Map<String, String>) param.get("varTypes");
 
                 // Получаем соединение с БД
                 if (session.containsKey("DATABASE")) {
@@ -485,23 +482,60 @@ public class cmpAction extends Base {
                 List<String> varsArr = (List<String>) param.get("vars");
                 System.out.println("Vars array: " + varsArr);
 
-                // Регистрируем OUT параметры
+                // Регистрируем OUT параметры с соответствующими типами
                 int ind = 0;
-                for (String varOne : varsArr) {
+                for (String varName : varsArr) {
                     ind++;
-                    cs.registerOutParameter(ind, Types.VARCHAR);
-                    System.out.println("Registered OUT parameter " + ind + " for var: " + varOne);
+                    String type = varTypes != null ? varTypes.getOrDefault(varName, "string") : "string";
+
+                    switch (type) {
+                        case "integer":
+                        case "int":
+                            cs.registerOutParameter(ind, Types.INTEGER);
+                            break;
+                        case "bigint":
+                        case "long":
+                            cs.registerOutParameter(ind, Types.BIGINT);
+                            break;
+                        case "decimal":
+                        case "numeric":
+                            cs.registerOutParameter(ind, Types.NUMERIC);
+                            break;
+                        case "boolean":
+                        case "bool":
+                            cs.registerOutParameter(ind, Types.BOOLEAN);
+                            break;
+                        case "date":
+                            cs.registerOutParameter(ind, Types.DATE);
+                            break;
+                        case "timestamp":
+                            cs.registerOutParameter(ind, Types.TIMESTAMP);
+                            break;
+                        case "json":
+                        case "jsonb":
+                            cs.registerOutParameter(ind, Types.OTHER);
+                            break;
+                        case "array":
+                            cs.registerOutParameter(ind, Types.ARRAY);
+                            break;
+                        case "string":
+                        default:
+                            cs.registerOutParameter(ind, Types.VARCHAR);
+                            break;
+                    }
+                    System.out.println("Registered OUT parameter " + ind + " for var: " + varName + " with type: " + type);
                 }
 
                 if (debugMode) {
                     result.put("SQL", ((String) param.get("SQL")).split("\n"));
                 }
 
-                // Устанавливаем IN параметры
+                // Устанавливаем IN параметры с преобразованием типов
                 ind = 0;
                 for (String varNameOne : varsArr) {
                     ind++;
                     String valueStr = "";
+                    String targetType = varTypes != null ? varTypes.getOrDefault(varNameOne, "string") : "string";
 
                     if (vars.has(varNameOne)) {
                         Object varObj = vars.get(varNameOne);
@@ -523,8 +557,81 @@ public class cmpAction extends Base {
                         }
                     }
 
-                    System.out.println("Setting IN parameter " + ind + " (" + varNameOne + "): " + valueStr);
-                    cs.setString(ind, valueStr);
+                    System.out.println("Setting IN parameter " + ind + " (" + varNameOne + "): " + valueStr + " (type: " + targetType + ")");
+
+                    // Преобразуем значение в соответствии с целевым типом
+                    try {
+                        switch (targetType) {
+                            case "integer":
+                            case "int":
+                                if (valueStr.isEmpty()) {
+                                    cs.setNull(ind, Types.INTEGER);
+                                } else {
+                                    cs.setInt(ind, Integer.parseInt(valueStr));
+                                }
+                                break;
+                            case "bigint":
+                            case "long":
+                                if (valueStr.isEmpty()) {
+                                    cs.setNull(ind, Types.BIGINT);
+                                } else {
+                                    cs.setLong(ind, Long.parseLong(valueStr));
+                                }
+                                break;
+                            case "decimal":
+                            case "numeric":
+                                if (valueStr.isEmpty()) {
+                                    cs.setNull(ind, Types.NUMERIC);
+                                } else {
+                                    cs.setBigDecimal(ind, new java.math.BigDecimal(valueStr));
+                                }
+                                break;
+                            case "boolean":
+                            case "bool":
+                                if (valueStr.isEmpty()) {
+                                    cs.setNull(ind, Types.BOOLEAN);
+                                } else {
+                                    cs.setBoolean(ind, Boolean.parseBoolean(valueStr));
+                                }
+                                break;
+                            case "json":
+                            case "jsonb":
+                                if (valueStr.isEmpty()) {
+                                    cs.setNull(ind, Types.OTHER);
+                                } else {
+                                    cs.setObject(ind, valueStr, Types.OTHER);
+                                }
+                                break;
+                            case "array":
+                                if (valueStr.isEmpty()) {
+                                    cs.setNull(ind, Types.ARRAY);
+                                } else {
+                                    try {
+                                        JSONArray jsonArray = new JSONArray(valueStr);
+                                        String[] stringArray = new String[jsonArray.length()];
+                                        for (int i = 0; i < jsonArray.length(); i++) {
+                                            stringArray[i] = jsonArray.getString(i);
+                                        }
+                                        Array array = conn.createArrayOf("text", stringArray);
+                                        cs.setArray(ind, array);
+                                    } catch (Exception e) {
+                                        cs.setString(ind, valueStr);
+                                    }
+                                }
+                                break;
+                            case "string":
+                            default:
+                                if (valueStr.isEmpty()) {
+                                    cs.setNull(ind, Types.VARCHAR);
+                                } else {
+                                    cs.setString(ind, valueStr);
+                                }
+                                break;
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Error converting parameter " + varNameOne + " to type " + targetType + ": " + e.getMessage());
+                        cs.setString(ind, valueStr);
+                    }
                 }
 
                 // Выполняем процедуру
@@ -532,11 +639,69 @@ public class cmpAction extends Base {
                 cs.execute();
                 System.out.println("Procedure executed successfully");
 
-                // Получаем OUT параметры
+                // Получаем OUT параметры с преобразованием в строки для JSON
                 ind = 0;
                 for (String varNameOne : varsArr) {
                     ind++;
-                    String outParam = cs.getString(ind);
+                    String outParam = "";
+                    String targetType = varTypes != null ? varTypes.getOrDefault(varNameOne, "string") : "string";
+
+                    try {
+                        switch (targetType) {
+                            case "integer":
+                            case "int":
+                                int intVal = cs.getInt(ind);
+                                outParam = cs.wasNull() ? "" : String.valueOf(intVal);
+                                break;
+                            case "bigint":
+                            case "long":
+                                long longVal = cs.getLong(ind);
+                                outParam = cs.wasNull() ? "" : String.valueOf(longVal);
+                                break;
+                            case "decimal":
+                            case "numeric":
+                                java.math.BigDecimal decimalVal = cs.getBigDecimal(ind);
+                                outParam = decimalVal == null ? "" : decimalVal.toString();
+                                break;
+                            case "boolean":
+                            case "bool":
+                                boolean boolVal = cs.getBoolean(ind);
+                                outParam = cs.wasNull() ? "" : String.valueOf(boolVal);
+                                break;
+                            case "date":
+                            case "timestamp":
+                                java.sql.Timestamp timestampVal = cs.getTimestamp(ind);
+                                outParam = timestampVal == null ? "" : timestampVal.toString();
+                                break;
+                            case "json":
+                            case "jsonb":
+                                Object jsonVal = cs.getObject(ind);
+                                outParam = jsonVal == null ? "" : jsonVal.toString();
+                                break;
+                            case "array":
+                                Array arrayVal = cs.getArray(ind);
+                                if (arrayVal != null) {
+                                    Object[] array = (Object[]) arrayVal.getArray();
+                                    JSONArray jsonArray = new JSONArray();
+                                    for (Object item : array) {
+                                        jsonArray.put(item.toString());
+                                    }
+                                    outParam = jsonArray.toString();
+                                } else {
+                                    outParam = "";
+                                }
+                                break;
+                            case "string":
+                            default:
+                                outParam = cs.getString(ind);
+                                if (outParam == null) outParam = "";
+                                break;
+                        }
+                    } catch (SQLException e) {
+                        System.err.println("Error getting OUT parameter " + ind + ": " + e.getMessage());
+                        outParam = "";
+                    }
+
                     System.out.println("OUT parameter " + ind + " (" + varNameOne + "): " + outParam);
 
                     if (vars.has(varNameOne) && vars.get(varNameOne) instanceof JSONObject) {
@@ -578,7 +743,7 @@ public class cmpAction extends Base {
         return resultText.getBytes();
     }
 
-    // Исправленный метод createSQLFunctionPG - больше не использует elementThis
+    // Исправленный метод createSQLFunctionPG - поддержка определения типа и преобразования
     private void createSQLFunctionPG(String functionName, String schema, Element element, String fileName, boolean debugMode) {
         // Очищаем имя функции от недопустимых символов
         String cleanFunctionName = functionName;
@@ -598,6 +763,11 @@ public class cmpAction extends Base {
         }
 
         Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
+        if (conn == null) {
+            System.err.println("Cannot connect to database for creating procedure");
+            return;
+        }
+
         StringBuffer vars = new StringBuffer();
         StringBuffer varsColl = new StringBuffer();
         Attributes attrs = element.attributes();
@@ -605,36 +775,101 @@ public class cmpAction extends Base {
         String language = RemoveArrKeyRtrn(attrs, "language", "plpgsql");
         param.put("language", language);
         List<String> varsArr = new ArrayList<>();
+        Map<String, String> varTypes = new HashMap<>(); // Храним типы переменных
+        String beforeCodeBloc = "";
+        String afterCodeBloc = "";
 
+        // Обрабатываем дочерние элементы для сбора информации о переменных
         for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
             Element itemElement = element.child(numChild);
             String tagName = itemElement.tag().toString().toLowerCase();
 
-            if (tagName.indexOf("var") != -1 || tagName.indexOf("cmpactionvar") != -1) {
+            if (tagName.equals("before")) {
+                // Блок BEFORE содержит код до основного запроса
+                beforeCodeBloc = itemElement.text().trim();
+                itemElement.text(""); // Очищаем после обработки
+            } else if (tagName.equals("after")) {
+                // Блок AFTER содержит код после основного запроса
+                afterCodeBloc = itemElement.text().trim();
+                itemElement.text(""); // Очищаем после обработки
+            } else if (tagName.indexOf("var") != -1 || tagName.indexOf("cmpactionvar") != -1) {
                 Attributes attrsItem = itemElement.attributes();
                 String nameItem = RemoveArrKeyRtrn(attrsItem, "name", "");
                 String src = RemoveArrKeyRtrn(attrsItem, "src", nameItem);
                 String srctype = RemoveArrKeyRtrn(attrsItem, "srctype", "");
-                String get = RemoveArrKeyRtrn(attrsItem, "get", "");
-                String put = RemoveArrKeyRtrn(attrsItem, "put", "");
                 String len = RemoveArrKeyRtrn(attrsItem, "len", "");
-                String typeVar = "VARCHAR";
-                if (len.length() > 0) {
-                    typeVar = "VARCHAR(" + len + ")";
-                }
-                typeVar = RemoveArrKeyRtrn(attrsItem, "type", typeVar);
+                String type = RemoveArrKeyRtrn(attrsItem, "type", ""); // string, integer, array, json
 
-                vars.append(nameItem);
+                // Определяем SQL тип
+                String sqlType = "VARCHAR";
+
+                if (!type.isEmpty()) {
+                    // Если тип указан явно
+                    switch (type.toLowerCase()) {
+                        case "integer":
+                        case "int":
+                            sqlType = "INTEGER";
+                            break;
+                        case "bigint":
+                        case "long":
+                            sqlType = "BIGINT";
+                            break;
+                        case "decimal":
+                        case "numeric":
+                            sqlType = "NUMERIC";
+                            break;
+                        case "boolean":
+                        case "bool":
+                            sqlType = "BOOLEAN";
+                            break;
+                        case "date":
+                            sqlType = "DATE";
+                            break;
+                        case "timestamp":
+                            sqlType = "TIMESTAMP";
+                            break;
+                        case "json":
+                        case "jsonb":
+                            sqlType = "JSONB";
+                            break;
+                        case "array":
+                            sqlType = "TEXT[]";
+                            break;
+                        case "string":
+                        default:
+                            if (len.length() > 0 && !len.equals("-1")) {
+                                sqlType = "VARCHAR(" + len + ")";
+                            } else {
+                                sqlType = "TEXT";
+                            }
+                            break;
+                    }
+                } else {
+                    // Автоматическое определение типа по len
+                    if (len.length() > 0 && !len.equals("-1")) {
+                        sqlType = "VARCHAR(" + len + ")";
+                    } else if (len.equals("-1")) {
+                        sqlType = "TEXT";
+                    } else {
+                        sqlType = "VARCHAR"; // По умолчанию VARCHAR
+                    }
+                }
+
                 varsArr.add(nameItem);
+                varTypes.put(nameItem, type.isEmpty() ? "string" : type.toLowerCase());
+
+                // Для действий все параметры INOUT, чтобы можно было возвращать значения
+                vars.append(nameItem);
                 vars.append(" INOUT ");
-                vars.append(typeVar);
+                vars.append(sqlType);
                 vars.append(",");
                 varsColl.append("?,");
+
+                System.out.println("Parameter " + nameItem + ": type=" + sqlType + ", direction=INOUT, len=" + len);
             }
         }
 
-        param.put("vars", varsArr);
-
+        // Убираем последнюю запятую
         String varsStr = vars.toString();
         if (varsStr.length() > 0) {
             varsStr = varsStr.substring(0, varsStr.length() - 1);
@@ -645,25 +880,58 @@ public class cmpAction extends Base {
             varsCollStr = varsCollStr.substring(0, varsCollStr.length() - 1);
         }
 
+        param.put("vars", varsArr);
+        param.put("varTypes", varTypes); // Сохраняем типы для использования в onPage
+
+        // Формируем процедуру
         StringBuffer sb = new StringBuffer();
         sb.append("CREATE OR REPLACE PROCEDURE ");
         sb.append(schema).append(".").append(cleanFunctionName);
         sb.append("(");
         sb.append(varsStr);
-        sb.append(") LANGUAGE ");
+        sb.append(")\n");
+        sb.append("LANGUAGE ");
         sb.append(language);
-        sb.append(" AS $$ \n");
-        sb.append("BEGIN \n");
-        sb.append("--cmpAction fileName:");
+        sb.append("\nAS $$\n");
+
+        if (beforeCodeBloc.length() > 0) {
+            sb.append(beforeCodeBloc);
+            if (!beforeCodeBloc.endsWith(";") && !beforeCodeBloc.endsWith("\n")) {
+                sb.append(";\n");
+            } else {
+                sb.append("\n");
+            }
+        } else {
+            sb.append("BEGIN\n");
+        }
+
+        sb.append("-- cmpAction fileName:");
         sb.append(fileName);
         sb.append("\n");
         sb.append(element.text().trim());
-        sb.append("\nEND;$$\n");
 
-        System.out.println("Creating procedure: " + schema + "." + cleanFunctionName);
-        System.out.println("SQL: " + sb.toString());
+        if (!element.text().trim().endsWith(";") && !element.text().trim().endsWith("\n")) {
+            sb.append(";\n");
+        } else {
+            sb.append("\n");
+        }
 
-        createProcedure(conn, schema + "." + cleanFunctionName, sb.toString());
+        if (afterCodeBloc.length() > 0) {
+            sb.append(afterCodeBloc);
+            if (!afterCodeBloc.endsWith(";") && !afterCodeBloc.endsWith("\n")) {
+                sb.append(";\n");
+            } else {
+                sb.append("\n");
+            }
+        }
+
+        sb.append("END;\n");
+        sb.append("$$\n");
+
+        String createProcedureSQL = sb.toString();
+        System.out.println("Creating procedure with SQL:\n" + createProcedureSQL);
+
+        createProcedure(conn, schema + "." + cleanFunctionName, createProcedureSQL);
 
         String prepareCall = "CALL " + schema + "." + cleanFunctionName + "(" + varsCollStr + ");";
 
@@ -672,16 +940,57 @@ public class cmpAction extends Base {
             int ind = 0;
             for (String varOne : varsArr) {
                 ind++;
-                cs.registerOutParameter(ind, Types.VARCHAR);
+                // Регистрируем OUT параметры с соответствующим SQL типом
+                String type = varTypes.getOrDefault(varOne, "string");
+                switch (type) {
+                    case "integer":
+                    case "int":
+                        cs.registerOutParameter(ind, Types.INTEGER);
+                        break;
+                    case "bigint":
+                    case "long":
+                        cs.registerOutParameter(ind, Types.BIGINT);
+                        break;
+                    case "decimal":
+                    case "numeric":
+                        cs.registerOutParameter(ind, Types.NUMERIC);
+                        break;
+                    case "boolean":
+                    case "bool":
+                        cs.registerOutParameter(ind, Types.BOOLEAN);
+                        break;
+                    case "date":
+                        cs.registerOutParameter(ind, Types.DATE);
+                        break;
+                    case "timestamp":
+                        cs.registerOutParameter(ind, Types.TIMESTAMP);
+                        break;
+                    case "json":
+                    case "jsonb":
+                        cs.registerOutParameter(ind, Types.OTHER);
+                        break;
+                    case "array":
+                        cs.registerOutParameter(ind, Types.ARRAY);
+                        break;
+                    case "string":
+                    default:
+                        cs.registerOutParameter(ind, Types.VARCHAR);
+                        break;
+                }
+                System.out.println("Registered OUT parameter " + ind + " for var: " + varOne + " with type: " + type);
             }
             param.put("CallableStatement", cs);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
         param.put("connect", conn);
         param.put("varsArr", varsArr);
-        param.put("SQL", sb.toString());
+        param.put("SQL", createProcedureSQL);
         param.put("prepareCall", prepareCall);
+
         procedureList.put(schema + "." + cleanFunctionName, param);
+
+        System.out.println("Procedure " + schema + "." + cleanFunctionName + " created successfully");
     }
 }
