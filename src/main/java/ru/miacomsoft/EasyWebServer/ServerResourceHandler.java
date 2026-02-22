@@ -578,7 +578,6 @@ public class ServerResourceHandler implements Runnable {
             processPageListResource(resourcePath);
             return;
         }
-
         // 2. Ищем файл во всех доступных каталогах
         file = findFileInAllDirectories(query.requestPath);
         if (file != null) {

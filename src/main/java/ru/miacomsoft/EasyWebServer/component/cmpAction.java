@@ -21,8 +21,8 @@ import static ru.miacomsoft.EasyWebServer.PostgreQuery.*;
 
 public class cmpAction extends Base {
 
-    // Кэш для хранения времени модификации файлов и соответствующих функций
-    private static Map<String, Long> functionFileModifiedMap = new HashMap<>();
+    // Кэш для хранения информации о существовании функций в БД
+    private static Map<String, Boolean> functionExistsCache = new HashMap<>();
 
     // Конструктор с тремя параметрами
     public cmpAction(Document doc, Element element, String tag) {
@@ -144,37 +144,28 @@ public class cmpAction extends Base {
                     System.out.println("Compiled Java function: " + functionName);
                 }
             } else if (query_type.equals("sql")) {
-                // Получаем время модификации файла
-                long fileModifiedTime = 0;
-                try {
-                    java.io.File file = new java.io.File(docPath);
-                    if (file.exists()) {
-                        fileModifiedTime = file.lastModified();
-                    }
-                } catch (Exception e) {
-                    System.err.println("Error getting file modification time: " + e.getMessage());
-                }
+                String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
 
                 // Проверяем, нужно ли создавать функцию
                 boolean needToCreate = ServerConstant.config.DEBUG; // В режиме debug всегда создаем
-
                 if (!needToCreate) {
-                    // Проверяем по кэшу
-                    Long cachedTime = functionFileModifiedMap.get(functionName);
-                    if (cachedTime == null || cachedTime != fileModifiedTime) {
-                        needToCreate = true;
-                    } else {
-                        // Дополнительно проверяем существование функции в БД
-                        needToCreate = !functionExistsInDB(functionName);
+                    // Проверяем кэш наличия функции
+                    Boolean exists = functionExistsCache.get(fullFunctionName);
+                    if (exists == null) {
+                        // Если в кэше нет, делаем запрос к БД
+                        exists = checkFunctionExistsInDB(fullFunctionName);
+                        functionExistsCache.put(fullFunctionName, exists);
+                        System.out.println("Function " + fullFunctionName + " exists in DB: " + exists);
                     }
+                    needToCreate = !exists;
                 }
 
                 if (needToCreate) {
-                    createSQLFunctionPG(ServerConstant.config.APP_NAME + "_" + functionName, this, element, docPath + " (" + element.attr("name") + ")");
-                    // Обновляем кэш
-                    functionFileModifiedMap.put(functionName, fileModifiedTime);
+                    createSQLFunctionPG(fullFunctionName, this, element, docPath + " (" + element.attr("name") + ")");
+                    // После создания обновляем кэш
+                    functionExistsCache.put(fullFunctionName, true);
                 } else {
-                    System.out.println("Function " + functionName + " is up to date, skipping creation");
+                    System.out.println("Function " + fullFunctionName + " already exists, skipping creation");
                 }
             }
         }
@@ -199,21 +190,23 @@ public class cmpAction extends Base {
     }
 
     /**
-     * Проверка существования функции в БД
+     * Проверка существования функции в БД с использованием EXISTS
      */
-    private boolean functionExistsInDB(String functionName) {
+    private boolean checkFunctionExistsInDB(String fullFunctionName) {
         Connection conn = null;
         try {
             conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
             if (conn == null) return false;
 
-            String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
-
             Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery(
-                    "SELECT 1 FROM pg_proc WHERE proname = '" + fullFunctionName + "'"
-            );
-            return rs.next();
+            String sql = "SELECT EXISTS(SELECT 1 FROM pg_proc WHERE proname = '" + fullFunctionName + "') AS function_exists";
+            System.out.println("Checking function existence: " + sql);
+            ResultSet rs = stmt.executeQuery(sql);
+
+            if (rs.next()) {
+                return rs.getBoolean(1);
+            }
+            return false;
         } catch (SQLException e) {
             System.err.println("Error checking function existence: " + e.getMessage());
             return false;
@@ -226,6 +219,14 @@ public class cmpAction extends Base {
                 }
             }
         }
+    }
+
+    /**
+     * Проверка существования функции в БД (для обратной совместимости)
+     */
+    private boolean functionExistsInDB(String functionName) {
+        String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
+        return checkFunctionExistsInDB(fullFunctionName);
     }
 
     /**
@@ -511,7 +512,6 @@ public class cmpAction extends Base {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-
         param.put("connect", conn);
         param.put("varsArr", varsArr);
         param.put("SQL", sb.toString());
