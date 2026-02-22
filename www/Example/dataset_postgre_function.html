@@ -34,10 +34,10 @@
 <script>
     function myRun() {
          debugger
-        setVar('inpArg', '123-входящая переменная');
-        refreshDataSet('dsMyFun', function(data) {
+        D3Api.setVar('inpArg', '123-входящая переменная');
+        D3Api.refreshDataSet('dsMyFun', function(data) {
              debugger
-             console.log('getVars()', getVars());
+             console.log('getVars()', D3Api.getVars());
              console.log('data', data);
         });
     }

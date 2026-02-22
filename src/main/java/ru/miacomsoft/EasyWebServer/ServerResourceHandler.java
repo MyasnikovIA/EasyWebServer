@@ -265,8 +265,11 @@ public class ServerResourceHandler implements Runnable {
                 titleLine.substring(0, titleLine.indexOf(" "));
                 query.typeQuery = titleLine.substring(0, titleLine.indexOf(" "));
                 titleLine = titleLine.substring(titleLine.indexOf(query.typeQuery) + query.typeQuery.length() + 2);
-                if (titleLine.indexOf(" HTTP/") != -1) {
-                    titleLine = titleLine.substring(0, titleLine.length() - (titleLine.substring(titleLine.lastIndexOf(" HTTP/"))).length());
+                if (titleLine.contains(" HTTP/")) {
+                    int httpIndex = titleLine.lastIndexOf(" HTTP/");
+                    if (httpIndex > 0) {
+                        titleLine = titleLine.substring(0, httpIndex);
+                    }
                 }
                 if (titleLine.trim().length() == 0) {
                     titleLine = ServerConstant.config.INDEX_PAGE;

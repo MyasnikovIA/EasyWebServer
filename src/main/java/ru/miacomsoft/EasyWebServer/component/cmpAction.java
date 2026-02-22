@@ -24,15 +24,26 @@ public class cmpAction extends Base {
     // Кэш для хранения информации о существовании функций в БД
     private static Map<String, Boolean> functionExistsCache = new HashMap<>();
 
+    // Добавляем поле для хранения режима отладки
+    private boolean debugMode = false;
+
     // Конструктор с тремя параметрами
     public cmpAction(Document doc, Element element, String tag) {
         super(doc, element, tag);
+        // Сохраняем режим отладки из документа
+        if (doc != null && doc.hasAttr("debug_mode")) {
+            debugMode = Boolean.parseBoolean(doc.attr("debug_mode"));
+        }
         initialize(doc, element);
     }
 
     // Конструктор с двумя параметрами
     public cmpAction(Document doc, Element element) {
         super(doc, element, "teaxtarea");
+        // Сохраняем режим отладки из документа
+        if (doc != null && doc.hasAttr("debug_mode")) {
+            debugMode = Boolean.parseBoolean(doc.attr("debug_mode"));
+        }
         initialize(doc, element);
     }
 
@@ -57,8 +68,8 @@ public class cmpAction extends Base {
         attrsDst.add("pg_schema", pgSchema);
 
         // Формирование имени функции
-        String docPath = doc.attr("doc_path");
-        String rootPath = doc.attr("rootPath");
+        String docPath = doc != null ? doc.attr("doc_path") : "";
+        String rootPath = doc != null ? doc.attr("rootPath") : "";
         String relativePath = "";
         if (docPath.length() > rootPath.length() && docPath.length() > 5) {
             relativePath = docPath.substring(rootPath.length(), docPath.length() - 5);
@@ -71,6 +82,12 @@ public class cmpAction extends Base {
         if (pathHash.length() > 8) {
             pathHash = pathHash.substring(0, 8); // Берем первые 8 символов хэша
         }
+
+        // Убеждаемся, что имя функции не начинается с цифры
+        if (pathHash.length() > 0 && Character.isDigit(pathHash.charAt(0))) {
+            pathHash = "f" + pathHash; // Добавляем префикс 'f' если имя начинается с цифры
+        }
+
         // Получаем имя файла без расширения
         String fileName = "";
         if (relativePath.lastIndexOf('/') > 0) {
@@ -80,6 +97,11 @@ public class cmpAction extends Base {
             }
         }
         String functionName = (pathHash + "_" + fileName + "_" + element.attr("name")).toLowerCase();
+
+        // Дополнительная проверка - убеждаемся, что имя начинается с буквы или подчеркивания
+        if (functionName.length() > 0 && Character.isDigit(functionName.charAt(0))) {
+            functionName = "f_" + functionName;
+        }
 
         // Ограничиваем длину имени функции (PostgreSQL ограничение 63 символа)
         if (functionName.length() > 60) {
@@ -150,12 +172,6 @@ public class cmpAction extends Base {
             } else if (query_type.equals("sql")) {
                 String fullFunctionName = pgSchema + "." + functionName;
 
-                // Проверяем режим отладки из сессии документа
-                boolean debugMode = false;
-                if (doc.hasAttr("debug_mode")) {
-                    debugMode = Boolean.parseBoolean(doc.attr("debug_mode"));
-                }
-
                 // Проверяем, нужно ли создавать функцию
                 boolean needToCreate = debugMode; // В режиме debug всегда создаем
                 if (!needToCreate) {
@@ -171,7 +187,8 @@ public class cmpAction extends Base {
                 }
 
                 if (needToCreate) {
-                    createSQLFunctionPG(fullFunctionName, pgSchema, this, element, docPath + " (" + element.attr("name") + ")");
+                    // Передаем debugMode в метод createSQLFunctionPG
+                    createSQLFunctionPG(fullFunctionName, pgSchema, element, docPath + " (" + element.attr("name") + ")", debugMode);
                     // После создания обновляем кэш
                     functionExistsCache.put(fullFunctionName, true);
                 } else {
@@ -187,15 +204,19 @@ public class cmpAction extends Base {
         }
 
         // Автоматическое подключение JavaScript библиотеки для cmpAction
-        Elements head = doc.getElementsByTag("head");
+        if (doc != null) {
+            Elements head = doc.getElementsByTag("head");
 
-        // Проверяем, не подключена ли уже библиотека
-        Elements existingScripts = head.select("script[src*='cmpAction_js']");
-        if (existingScripts.isEmpty()) {
-            // Добавляем ссылку на JS библиотеку
-            String jsPath = "{component}/cmpAction_js";
-            head.append("<script cmp=\"action-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
-            System.out.println("cmpAction: JavaScript library auto-included for action: " + name);
+            // Проверяем, не подключена ли уже библиотека
+            if (head != null && head.size() > 0) {
+                Elements existingScripts = head.select("script[src*='cmpAction_js']");
+                if (existingScripts.isEmpty()) {
+                    // Добавляем ссылку на JS библиотеку
+                    String jsPath = "{component}/cmpAction_js";
+                    head.append("<script cmp=\"action-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
+                    System.out.println("cmpAction: JavaScript library auto-included for action: " + name);
+                }
+            }
         }
     }
 
@@ -249,9 +270,10 @@ public class cmpAction extends Base {
 
     /**
      * Вспомогательный метод для вычисления MD5 хэша
+     * Возвращает строку, которая гарантированно начинается с буквы
      */
     private String getMd5Hash(String input) {
-        if (input == null) return "";
+        if (input == null) return "f_empty";
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
             byte[] digest = md.digest(input.getBytes());
@@ -259,26 +281,39 @@ public class cmpAction extends Base {
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
             }
-            return sb.toString();
+            String hash = sb.toString();
+            // Убеждаемся, что хэш не начинается с цифры
+            if (hash.length() > 0 && Character.isDigit(hash.charAt(0))) {
+                return "f" + hash;
+            }
+            return hash;
         } catch (Exception e) {
-            return Integer.toHexString(input.hashCode());
+            return "f_" + Integer.toHexString(input.hashCode());
         }
     }
 
     public static byte[] onPage(HttpExchange query) {
-        query.mimeType = "application/javascript";
+        query.mimeType = "application/json"; // Изменить mime ответа
         Map<String, Object> session = query.session;
         JSONObject result = new JSONObject();
         JSONObject queryProperty = query.requestParam;
+
+        System.out.println("=== cmpAction onPage called ===");
+        System.out.println("queryProperty: " + queryProperty.toString());
 
         // Получаем тело запроса
         String postBodyStr = new String(query.postCharBody);
         JSONObject vars;
 
         try {
-            vars = new JSONObject(postBodyStr);
+            if (postBodyStr.trim().startsWith("{")) {
+                vars = new JSONObject(postBodyStr);
+            } else {
+                vars = new JSONObject();
+                System.out.println("Body is not JSON, using empty object");
+            }
         } catch (Exception e) {
-            // Если не удалось распарсить как JSON, создаем пустой объект
+            System.err.println("Error parsing JSON body: " + e.getMessage());
             vars = new JSONObject();
         }
 
@@ -300,173 +335,267 @@ public class cmpAction extends Base {
         System.out.println("Query type: " + query_type);
         System.out.println("PG Schema: " + pg_schema);
 
-        if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(fullActionName)) {
-            // Подготавливаем переменные для Java функции - все как строки
-            JSONObject varFun = new JSONObject();
-            Iterator<String> keys = vars.keys();
-
-            while (keys.hasNext()) {
-                String key = keys.next();
-                Object varValue = vars.get(key);
-
-                if (varValue instanceof JSONObject) {
-                    JSONObject varObj = (JSONObject) varValue;
-                    // Всегда берем строковое значение
-                    String value = varObj.optString("value", "");
-                    if (value.isEmpty()) {
-                        value = varObj.optString("defaultVal", "");
-                    }
-                    varFun.put(key, value);
-                    System.out.println("Variable " + key + " = " + value + " (from object)");
-                } else {
-                    varFun.put(key, varValue.toString());
-                    System.out.println("Variable " + key + " = " + varValue + " (direct)");
-                }
-            }
-
-            System.out.println("Calling Java function with vars: " + varFun.toString());
-
-            // Вызываем Java функцию
-            JSONObject resFun = ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.runFunction(fullActionName, varFun, session, null);
-
-            System.out.println("Java function result: " + resFun.toString());
-
-            // Обрабатываем результаты
-            if (resFun.has("JAVA_ERROR")) {
-                // Если есть ошибка, добавляем её в результат
-                result.put("ERROR", resFun.get("JAVA_ERROR"));
-
-                // Возвращаем исходные vars без изменений, чтобы клиент не потерял данные
-                result.put("vars", vars);
-            } else {
-                // Обрабатываем успешный результат
-                keys = resFun.keys();
-                while (keys.hasNext()) {
-                    String key = keys.next();
-                    Object keyvalue = resFun.get(key);
-
-                    if (key.equals("JAVA_ERROR")) {
-                        continue;
-                    }
-
-                    // Обновляем значения в vars, сохраняя структуру
-                    if (vars.has(key) && vars.get(key) instanceof JSONObject) {
-                        // Сохраняем как строку
-                        vars.getJSONObject(key).put("value", keyvalue.toString());
-                    } else {
-                        JSONObject newVar = new JSONObject();
-                        newVar.put("value", keyvalue.toString());
-                        newVar.put("src", key);
-                        newVar.put("srctype", "var");
-                        vars.put(key, newVar);
-                    }
-                }
-                result.put("vars", vars);
-            }
-        } else if (query_type.equals("sql")) {
-            // Обработка SQL запросов
-            try {
-                if (procedureList.containsKey(fullActionName)) {
-                    HashMap<String, Object> param = procedureList.get(fullActionName);
-                    CallableStatement cs;
-
-                    if (session.containsKey("DATABASE")) {
-                        HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
-                        Connection conn = null;
-
-                        if (data_base.containsKey("CONNECT")) {
-                            conn = (Connection) data_base.get("CONNECT");
-                        } else {
-                            conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
-                                    String.valueOf(data_base.get("DATABASE_USER_PASS")));
-                            data_base.put("CONNECT", conn);
-                        }
-
-                        if (conn == null) {
-                            result.put("redirect", ServerConstant.config.LOGIN_PAGE);
-                            return result.toString().getBytes();
-                        }
-
-                        cs = conn.prepareCall((String) param.get("prepareCall"));
-
-                        int ind = 0;
-                        for (String varOne : (List<String>) param.get("varsArr")) {
-                            ind++;
-                            cs.registerOutParameter(ind, Types.VARCHAR);
-                        }
-
-                        List<String> varsArr = (List<String>) param.get("vars");
-
-                        // Проверяем режим отладки из сессии
-                        boolean debugMode = false;
-                        if (query.session != null && query.session.containsKey("debug_mode")) {
-                            debugMode = (boolean) query.session.get("debug_mode");
-                        }
-
-                        if (debugMode) {
-                            result.put("SQL", ((String) param.get("SQL")).split("\n"));
-                        }
-
-                        ind = 0;
-                        for (String varNameOne : varsArr) {
-                            JSONObject varOne = vars.optJSONObject(varNameOne);
-                            String valueStr = "";
-
-                            if (varOne != null) {
-                                if (varOne.optString("srctype").equals("session")) {
-                                    valueStr = String.valueOf(session.getOrDefault(varNameOne,
-                                            varOne.optString("defaultVal", "")));
-                                } else {
-                                    valueStr = varOne.optString("value", varOne.optString("defaultVal", ""));
-                                }
-                            }
-
-                            ind++;
-                            cs.setString(ind, valueStr);
-                        }
-
-                        cs.execute();
-
-                        ind = 0;
-                        for (String varNameOne : varsArr) {
-                            ind++;
-                            String outParam = cs.getString(ind);
-
-                            JSONObject varOne = vars.optJSONObject(varNameOne);
-                            if (varOne != null) {
-                                if (varOne.optString("srctype").equals("session")) {
-                                    session.put(varNameOne, outParam);
-                                } else {
-                                    varOne.put("value", outParam);
-                                }
-                            }
-                        }
-                    } else {
-                        result.put("redirect", ServerConstant.config.LOGIN_PAGE);
-                        return result.toString().getBytes();
-                    }
-                }
-            } catch (Exception e) {
-                result.put("ERROR", e.getClass().getName() + ": " + e.getMessage());
-                e.printStackTrace();
-            }
-        } else {
-            result.put("ERROR", "Function not found: " + fullActionName);
+        // Проверяем режим отладки из сессии
+        boolean debugMode = false;
+        if (query.session != null && query.session.containsKey("debug_mode")) {
+            debugMode = (boolean) query.session.get("debug_mode");
         }
 
-        result.put("vars", vars);
+        if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(fullActionName)) {
+            // Обработка Java функции
+            try {
+                // Подготавливаем переменные для Java функции - все как строки
+                JSONObject varFun = new JSONObject();
+                Iterator<String> keys = vars.keys();
+
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    Object varValue = vars.get(key);
+
+                    if (varValue instanceof JSONObject) {
+                        JSONObject varObj = (JSONObject) varValue;
+                        // Всегда берем строковое значение
+                        String value = varObj.optString("value", "");
+                        if (value.isEmpty()) {
+                            value = varObj.optString("defaultVal", "");
+                        }
+                        varFun.put(key, value);
+                        System.out.println("Variable " + key + " = " + value + " (from object)");
+                    } else {
+                        varFun.put(key, varValue.toString());
+                        System.out.println("Variable " + key + " = " + varValue + " (direct)");
+                    }
+                }
+
+                System.out.println("Calling Java function with vars: " + varFun.toString());
+
+                // Вызываем Java функцию
+                JSONObject resFun = ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.runFunction(fullActionName, varFun, session, null);
+
+                System.out.println("Java function result: " + resFun.toString());
+
+                // Обрабатываем результаты
+                if (resFun.has("JAVA_ERROR")) {
+                    // Если есть ошибка, добавляем её в результат
+                    result.put("ERROR", resFun.get("JAVA_ERROR"));
+
+                    // Возвращаем исходные vars без изменений, чтобы клиент не потерял данные
+                    result.put("vars", vars);
+                } else {
+                    // Обрабатываем успешный результат
+                    keys = resFun.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        Object keyvalue = resFun.get(key);
+
+                        if (key.equals("JAVA_ERROR")) {
+                            continue;
+                        }
+
+                        // Обновляем значения в vars, сохраняя структуру
+                        if (vars.has(key) && vars.get(key) instanceof JSONObject) {
+                            // Сохраняем как строку
+                            vars.getJSONObject(key).put("value", keyvalue.toString());
+                        } else {
+                            JSONObject newVar = new JSONObject();
+                            newVar.put("value", keyvalue.toString());
+                            newVar.put("src", key);
+                            newVar.put("srctype", "var");
+                            vars.put(key, newVar);
+                        }
+                    }
+                    result.put("vars", vars);
+                }
+            } catch (Exception e) {
+                System.err.println("Error executing Java function: " + e.getMessage());
+                e.printStackTrace();
+                result.put("ERROR", "Java function error: " + e.getMessage());
+                result.put("vars", vars);
+            }
+
+        } else if (query_type.equals("sql")) {
+            // Обработка SQL запросов
+            Connection conn = null;
+            CallableStatement cs = null;
+
+            try {
+                if (!procedureList.containsKey(fullActionName)) {
+                    result.put("ERROR", "Procedure not found: " + fullActionName);
+                    result.put("vars", vars);
+                    System.err.println("Procedure not found: " + fullActionName);
+                    return result.toString().getBytes();
+                }
+
+                System.out.println("Found procedure in list: " + fullActionName);
+
+                HashMap<String, Object> param = procedureList.get(fullActionName);
+
+                // Получаем соединение с БД
+                if (session.containsKey("DATABASE")) {
+                    HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
+
+                    if (data_base.containsKey("CONNECT")) {
+                        conn = (Connection) data_base.get("CONNECT");
+                        // Проверяем, не закрыто ли соединение
+                        try {
+                            if (conn == null || conn.isClosed()) {
+                                System.out.println("Connection is closed, reconnecting...");
+                                conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
+                                        String.valueOf(data_base.get("DATABASE_USER_PASS")));
+                                if (conn != null) {
+                                    data_base.put("CONNECT", conn);
+                                }
+                            }
+                        } catch (SQLException e) {
+                            System.err.println("Error checking connection: " + e.getMessage());
+                            conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
+                                    String.valueOf(data_base.get("DATABASE_USER_PASS")));
+                            if (conn != null) {
+                                data_base.put("CONNECT", conn);
+                            }
+                        }
+                    } else {
+                        System.out.println("Creating new connection...");
+                        conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
+                                String.valueOf(data_base.get("DATABASE_USER_PASS")));
+                        if (conn != null) {
+                            data_base.put("CONNECT", conn);
+                        }
+                    }
+                } else {
+                    // Используем системного пользователя
+                    System.out.println("Using system connection...");
+                    conn = getConnect(ServerConstant.config.DATABASE_USER_NAME,
+                            ServerConstant.config.DATABASE_USER_PASS);
+                }
+
+                if (conn == null) {
+                    result.put("redirect", ServerConstant.config.LOGIN_PAGE);
+                    result.put("ERROR", "Database connection failed");
+                    result.put("vars", vars);
+                    System.err.println("Database connection failed");
+                    return result.toString().getBytes();
+                }
+
+                String prepareCall = (String) param.get("prepareCall");
+                System.out.println("PrepareCall: " + prepareCall);
+
+                cs = conn.prepareCall(prepareCall);
+
+                List<String> varsArr = (List<String>) param.get("vars");
+                System.out.println("Vars array: " + varsArr);
+
+                // Регистрируем OUT параметры
+                int ind = 0;
+                for (String varOne : varsArr) {
+                    ind++;
+                    cs.registerOutParameter(ind, Types.VARCHAR);
+                    System.out.println("Registered OUT parameter " + ind + " for var: " + varOne);
+                }
+
+                if (debugMode) {
+                    result.put("SQL", ((String) param.get("SQL")).split("\n"));
+                }
+
+                // Устанавливаем IN параметры
+                ind = 0;
+                for (String varNameOne : varsArr) {
+                    ind++;
+                    String valueStr = "";
+
+                    if (vars.has(varNameOne)) {
+                        Object varObj = vars.get(varNameOne);
+                        if (varObj instanceof JSONObject) {
+                            JSONObject varOne = (JSONObject) varObj;
+
+                            if (varOne.optString("srctype").equals("session")) {
+                                Object sessionVal = session.get(varNameOne);
+                                if (sessionVal != null) {
+                                    valueStr = String.valueOf(sessionVal);
+                                } else {
+                                    valueStr = varOne.optString("defaultVal", "");
+                                }
+                            } else {
+                                valueStr = varOne.optString("value", varOne.optString("defaultVal", ""));
+                            }
+                        } else {
+                            valueStr = varObj.toString();
+                        }
+                    }
+
+                    System.out.println("Setting IN parameter " + ind + " (" + varNameOne + "): " + valueStr);
+                    cs.setString(ind, valueStr);
+                }
+
+                // Выполняем процедуру
+                System.out.println("Executing procedure...");
+                cs.execute();
+                System.out.println("Procedure executed successfully");
+
+                // Получаем OUT параметры
+                ind = 0;
+                for (String varNameOne : varsArr) {
+                    ind++;
+                    String outParam = cs.getString(ind);
+                    System.out.println("OUT parameter " + ind + " (" + varNameOne + "): " + outParam);
+
+                    if (vars.has(varNameOne) && vars.get(varNameOne) instanceof JSONObject) {
+                        JSONObject varOne = vars.getJSONObject(varNameOne);
+                        if (varOne.optString("srctype").equals("session")) {
+                            session.put(varNameOne, outParam);
+                        } else {
+                            varOne.put("value", outParam);
+                        }
+                    }
+                }
+
+                result.put("vars", vars);
+
+            } catch (SQLException e) {
+                System.err.println("SQL Error: " + e.getMessage());
+                e.printStackTrace();
+                result.put("ERROR", "SQL Error: " + e.getMessage());
+                result.put("vars", vars);
+            } catch (Exception e) {
+                System.err.println("Unexpected error: " + e.getMessage());
+                e.printStackTrace();
+                result.put("ERROR", "Error: " + e.getMessage());
+                result.put("vars", vars);
+            } finally {
+                // Закрываем resources
+                try {
+                    if (cs != null) cs.close();
+                } catch (Exception e) {}
+                // НЕ закрываем connection, так как он может использоваться повторно
+            }
+        } else {
+            result.put("ERROR", "Unsupported query type: " + query_type);
+            result.put("vars", vars);
+        }
+
         String resultText = result.toString();
         System.out.println("Action response: " + resultText);
         return resultText.getBytes();
     }
 
-    private void createSQLFunctionPG(String functionName, String schema, Element elementThis, Element element, String fileName) {
+    // Исправленный метод createSQLFunctionPG - больше не использует elementThis
+    private void createSQLFunctionPG(String functionName, String schema, Element element, String fileName, boolean debugMode) {
         // Очищаем имя функции от недопустимых символов
         String cleanFunctionName = functionName;
         if (functionName.contains(".")) {
             cleanFunctionName = functionName.substring(functionName.lastIndexOf('.') + 1);
         }
         cleanFunctionName = cleanFunctionName.replaceAll("[^a-zA-Z0-9_]", "");
+
+        // Убеждаемся, что имя функции не начинается с цифры
+        if (cleanFunctionName.length() > 0 && Character.isDigit(cleanFunctionName.charAt(0))) {
+            cleanFunctionName = "f_" + cleanFunctionName;
+        }
+
+        if (procedureList.containsKey(functionName) && !debugMode) {
+            // Если процедура уже создана в БД и режим отладки отключен, тогда пропускаем создание новой процедуры
+            return;
+        }
 
         Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
         StringBuffer vars = new StringBuffer();
