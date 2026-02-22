@@ -20,6 +20,9 @@ import static ru.miacomsoft.EasyWebServer.PostgreQuery.procedureList;
 
 public class cmpDataset extends Base {
 
+    // Кэш для хранения времени модификации файлов и соответствующих функций
+    private static Map<String, Long> functionFileModifiedMap = new HashMap<>();
+
     // Добавляем недостающий конструктор с тремя параметрами
     public cmpDataset(Document doc, Element element, String tag) {
         super(doc, element, tag); // Вызываем конструктор родительского класса
@@ -73,9 +76,12 @@ public class cmpDataset extends Base {
                 fileName = fileName.substring(0, fileName.lastIndexOf('.'));
             }
         }
-        // String functionName = (relativePath + "___" + element.attr("name")).toLowerCase();
         String functionName = (pathHash + "_" + fileName + "_" + element.attr("name")).toLowerCase();
 
+        // Ограничиваем длину имени функции (PostgreSQL ограничение 63 символа)
+        if (functionName.length() > 60) {
+            functionName = functionName.substring(0, 60);
+        }
 
         this.attr("style", "display:none");
         this.attr("dataset_name", functionName);
@@ -127,7 +133,38 @@ public class cmpDataset extends Base {
                     return;
                 }
             } else if (query_type.equals("sql")) {
-                createSQL(ServerConstant.config.APP_NAME + "_" + functionName, this, element, docPath+" ("+element.attr("name")+")");
+                // Получаем время модификации файла
+                long fileModifiedTime = 0;
+                try {
+                    java.io.File file = new java.io.File(docPath);
+                    if (file.exists()) {
+                        fileModifiedTime = file.lastModified();
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error getting file modification time: " + e.getMessage());
+                }
+
+                // Проверяем, нужно ли создавать функцию
+                boolean needToCreate = ServerConstant.config.DEBUG; // В режиме debug всегда создаем
+
+                if (!needToCreate) {
+                    // Проверяем по кэшу
+                    Long cachedTime = functionFileModifiedMap.get(functionName);
+                    if (cachedTime == null || cachedTime != fileModifiedTime) {
+                        needToCreate = true;
+                    } else {
+                        // Дополнительно проверяем существование функции в БД
+                        needToCreate = !functionExistsInDB(functionName);
+                    }
+                }
+
+                if (needToCreate) {
+                    createSQL(ServerConstant.config.APP_NAME + "_" + functionName, this, element, docPath + " (" + element.attr("name") + ")");
+                    // Обновляем кэш
+                    functionFileModifiedMap.put(functionName, fileModifiedTime);
+                } else {
+                    System.out.println("Function " + functionName + " is up to date, skipping creation");
+                }
             }
         }
         this.text("");
@@ -155,6 +192,35 @@ public class cmpDataset extends Base {
         }
     }
 
+    /**
+     * Проверка существования функции в БД
+     */
+    private boolean functionExistsInDB(String functionName) {
+        Connection conn = null;
+        try {
+            conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
+            if (conn == null) return false;
+
+            String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
+
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                    "SELECT 1 FROM pg_proc WHERE proname = '" + fullFunctionName + "'"
+            );
+            return rs.next();
+        } catch (SQLException e) {
+            System.err.println("Error checking function existence: " + e.getMessage());
+            return false;
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    // ignore
+                }
+            }
+        }
+    }
 
     public static byte[] onPage(HttpExchange query) {
         query.mimeType = "application/javascript"; // Изменить mime ответа
@@ -318,6 +384,7 @@ public class cmpDataset extends Base {
         result.put("vars", vars);
         return result.toString().getBytes();
     }
+
     /**
      * Вспомогательный метод для вычисления MD5 хэша
      */
@@ -335,6 +402,7 @@ public class cmpDataset extends Base {
             return Integer.toHexString(input.hashCode());
         }
     }
+
     private void createSQL(String functionName, Element elementThis, Element element, String fileName) {
         if (procedureList.containsKey(functionName) && !ServerConstant.config.DEBUG) {
             // Если функция уже создана в БД и режим отладки отключен, тогда пропускаем создание новой функции
@@ -360,8 +428,8 @@ public class cmpDataset extends Base {
                 // Блок BEFORE содержит код до основного запроса
                 String beforeText = itemElement.text().trim();
                 if (beforeText.length() > 0) {
-                    // Убираем лишние пробелы и переносы строк
-                    beforeText = beforeText.replaceAll("\\s+", " ");
+                    // Убираем лишние пробелы
+                    // beforeText = beforeText.replaceAll("(?<!\r?\n)[\\t\\x0B\\f ]+(?!\r?\n)", " ");
 
                     // Проверяем наличие DECLARE блока
                     String lowerBefore = beforeText.toLowerCase();

@@ -11,13 +11,18 @@ import ru.miacomsoft.EasyWebServer.ServerConstant;
 
 import java.sql.CallableStatement;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.sql.Statement;
 import java.util.*;
 
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.*;
 
 public class cmpAction extends Base {
+
+    // Кэш для хранения времени модификации файлов и соответствующих функций
+    private static Map<String, Long> functionFileModifiedMap = new HashMap<>();
 
     // Конструктор с тремя параметрами
     public cmpAction(Document doc, Element element, String tag) {
@@ -70,8 +75,12 @@ public class cmpAction extends Base {
                 fileName = fileName.substring(0, fileName.lastIndexOf('.'));
             }
         }
-        // String functionName = (relativePath + "___" + element.attr("name")).toLowerCase();
         String functionName = (pathHash + "_" + fileName + "_" + element.attr("name")).toLowerCase();
+
+        // Ограничиваем длину имени функции (PostgreSQL ограничение 63 символа)
+        if (functionName.length() > 60) {
+            functionName = functionName.substring(0, 60);
+        }
 
         this.attr("style", "display:none");
         this.attr("action_name", functionName);
@@ -135,7 +144,38 @@ public class cmpAction extends Base {
                     System.out.println("Compiled Java function: " + functionName);
                 }
             } else if (query_type.equals("sql")) {
-                createSQLFunctionPG(ServerConstant.config.APP_NAME + "_" + functionName, this, element, docPath+" ("+element.attr("name")+")");
+                // Получаем время модификации файла
+                long fileModifiedTime = 0;
+                try {
+                    java.io.File file = new java.io.File(docPath);
+                    if (file.exists()) {
+                        fileModifiedTime = file.lastModified();
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error getting file modification time: " + e.getMessage());
+                }
+
+                // Проверяем, нужно ли создавать функцию
+                boolean needToCreate = ServerConstant.config.DEBUG; // В режиме debug всегда создаем
+
+                if (!needToCreate) {
+                    // Проверяем по кэшу
+                    Long cachedTime = functionFileModifiedMap.get(functionName);
+                    if (cachedTime == null || cachedTime != fileModifiedTime) {
+                        needToCreate = true;
+                    } else {
+                        // Дополнительно проверяем существование функции в БД
+                        needToCreate = !functionExistsInDB(functionName);
+                    }
+                }
+
+                if (needToCreate) {
+                    createSQLFunctionPG(ServerConstant.config.APP_NAME + "_" + functionName, this, element, docPath + " (" + element.attr("name") + ")");
+                    // Обновляем кэш
+                    functionFileModifiedMap.put(functionName, fileModifiedTime);
+                } else {
+                    System.out.println("Function " + functionName + " is up to date, skipping creation");
+                }
             }
         }
 
@@ -156,16 +196,37 @@ public class cmpAction extends Base {
             head.append("<script cmp=\"action-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
             System.out.println("cmpAction: JavaScript library auto-included for action: " + name);
         }
-
-        // Удаляем старый скрипт с setActionAuto, так как он теперь в библиотеке
-        // StringBuffer sb = new StringBuffer();
-        // sb.append("<script> $(function() {");
-        // sb.append("  D3Api.setActionAuto('" + name + "');");
-        // sb.append("}); </script>");
-        // Elements elements = doc.getElementsByTag("body");
-        // elements.append(sb.toString());
     }
 
+    /**
+     * Проверка существования функции в БД
+     */
+    private boolean functionExistsInDB(String functionName) {
+        Connection conn = null;
+        try {
+            conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
+            if (conn == null) return false;
+
+            String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
+
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(
+                    "SELECT 1 FROM pg_proc WHERE proname = '" + fullFunctionName + "'"
+            );
+            return rs.next();
+        } catch (SQLException e) {
+            System.err.println("Error checking function existence: " + e.getMessage());
+            return false;
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    // ignore
+                }
+            }
+        }
+    }
 
     /**
      * Вспомогательный метод для вычисления MD5 хэша
@@ -365,12 +426,11 @@ public class cmpAction extends Base {
         return resultText.getBytes();
     }
 
-    private void createSQLFunctionPG(String functionName, Element elementThis, Element element,String fileName) {
+    private void createSQLFunctionPG(String functionName, Element elementThis, Element element, String fileName) {
         // Очищаем имя функции от недопустимых символов
         functionName = functionName.replaceAll("[^a-zA-Z0-9_]", "");
 
-        Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME,
-                ServerConstant.config.DATABASE_USER_PASS);
+        Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
         StringBuffer vars = new StringBuffer();
         StringBuffer varsColl = new StringBuffer();
         Attributes attrs = element.attributes();
