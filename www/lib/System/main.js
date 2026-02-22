@@ -1052,6 +1052,265 @@ D3Api = new function () {
 // Инициализация
 window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
 
+    // ============== Расширение универсальных методов D3Api для работы с контролами ==============
+
+    /**
+     * Расширение методов D3Api для работы с различными типами контролов
+     * Добавляет поддержку easyui компонентов и универсальные методы
+     */
+    (function extendD3Api() {
+        if (typeof D3Api === 'undefined') return;
+
+        console.log('D3Api: Extending with universal control methods');
+
+        // Сохраняем оригинальные методы
+        var originalSetCaption = D3Api.setCaption;
+        var originalGetCaption = D3Api.getCaption;
+        var originalSetDisabled = D3Api.setDisabled;
+        var originalSetValue = D3Api.setValue;
+        var originalGetValue = D3Api.getValue;
+
+        /**
+         * Универсальный метод установки подписи контрола
+         * Поддерживает: кнопки, label, и другие элементы с подписями
+         */
+        D3Api.setCaption = function(name, text) {
+            var ctrl = this.getControl(name);
+            if (!ctrl) return false;
+
+            // Проверяем наличие блока caption
+            var captionEl = ctrl.querySelector('[block="caption"]');
+            if (captionEl) {
+                captionEl.textContent = text;
+            } else {
+                // Для кнопок и простых элементов
+                ctrl.textContent = text;
+            }
+
+            // Генерируем событие изменения
+            var event = new CustomEvent('captionChanged', {
+                detail: { name: name, newText: text },
+                bubbles: true
+            });
+            ctrl.dispatchEvent(event);
+
+            return true;
+        };
+
+        /**
+         * Универсальный метод получения подписи контрола
+         */
+        D3Api.getCaption = function(name) {
+            var ctrl = this.getControl(name);
+            if (!ctrl) return null;
+
+            var captionEl = ctrl.querySelector('[block="caption"]');
+            if (captionEl) {
+                return captionEl.textContent;
+            }
+            return ctrl.textContent || null;
+        };
+
+        /**
+         * Универсальный метод установки значения контрола
+         * Поддерживает: input, select, textarea, checkbox, radio
+         */
+        D3Api.setValue = function(name, value) {
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return false;
+
+            var oldValue = this.getValue(name);
+            var tagName = ctrlObj.tagName.toLowerCase();
+            var type = ctrlObj.type ? ctrlObj.type.toLowerCase() : '';
+
+            // Обработка различных типов контролов
+            if (tagName === 'input') {
+                if (type === 'checkbox') {
+                    ctrlObj.checked = (value === true || value === 'on' || value === 'true');
+                } else if (type === 'radio') {
+                    var radioName = ctrlObj.getAttribute('name');
+                    var radios = document.querySelectorAll('input[name="' + radioName + '"]');
+                    for (var i = 0; i < radios.length; i++) {
+                        if (radios[i].value == value) {
+                            radios[i].checked = true;
+                            break;
+                        }
+                    }
+                } else {
+                    ctrlObj.value = value;
+                }
+            } else if (tagName === 'select' || tagName === 'textarea') {
+                ctrlObj.value = value;
+            } else {
+                ctrlObj.textContent = value;
+            }
+
+            // Генерируем события
+            var changeEvent = new Event('change', { bubbles: true });
+            ctrlObj.dispatchEvent(changeEvent);
+
+            var valueEvent = new CustomEvent('valueChanged', {
+                detail: { name: name, newValue: value, oldValue: oldValue },
+                bubbles: true
+            });
+            document.dispatchEvent(valueEvent);
+
+            return true;
+        };
+
+        /**
+         * Универсальный метод получения значения контрола
+         */
+        D3Api.getValue = function(name, defValue) {
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return defValue;
+
+            var tagName = ctrlObj.tagName.toLowerCase();
+            var type = ctrlObj.type ? ctrlObj.type.toLowerCase() : '';
+
+            if (tagName === 'input') {
+                if (type === 'checkbox') {
+                    return ctrlObj.checked;
+                } else if (type === 'radio') {
+                    var radioName = ctrlObj.getAttribute('name');
+                    var checkedRadio = document.querySelector('input[name="' + radioName + '"]:checked');
+                    return checkedRadio ? checkedRadio.value : defValue;
+                } else {
+                    return ctrlObj.value !== undefined ? ctrlObj.value : defValue;
+                }
+            } else if (tagName === 'select' || tagName === 'textarea') {
+                return ctrlObj.value !== undefined ? ctrlObj.value : defValue;
+            } else {
+                return ctrlObj.textContent || defValue;
+            }
+        };
+
+        /**
+         * Универсальный метод включения/отключения контрола
+         * @param {string} name - Имя контрола
+         * @param {boolean} disabled - true - отключить, false - включить
+         */
+        D3Api.setDisabled = function(name, disabled) {
+            disabled = (disabled == true);
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return false;
+
+            var tagName = ctrlObj.tagName.toLowerCase();
+            var type = ctrlObj.getAttribute('type');
+
+            // Для easyui компонентов
+            if (type === 'accordion' || type === 'tabs' || ctrlObj.classList.contains('easyui-linkbutton')) {
+                if (disabled) {
+                    ctrlObj.setAttribute('disabled', 'disabled');
+                    ctrlObj.classList.add('ui-state-disabled');
+                } else {
+                    ctrlObj.removeAttribute('disabled');
+                    ctrlObj.classList.remove('ui-state-disabled', 'ui-button-disabled');
+                }
+                return true;
+            }
+
+            // Для стандартных контролов
+            if (disabled) {
+                ctrlObj.setAttribute('disabled', 'disabled');
+            } else {
+                ctrlObj.removeAttribute('disabled');
+            }
+
+            return true;
+        };
+
+        /**
+         * Проверка, отключен ли контрол
+         * @param {string} name - Имя контрола
+         * @returns {boolean} - true если отключен
+         */
+        D3Api.isDisabled = function(name) {
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return false;
+
+            return ctrlObj.hasAttribute('disabled') ||
+                ctrlObj.classList.contains('ui-state-disabled');
+        };
+
+        /**
+         * Установка обработчика события на контрол
+         * @param {string} name - Имя контрола
+         * @param {string} event - Название события (click, change, etc.)
+         * @param {Function} handler - Функция обработчик
+         */
+        D3Api.on = function(name, event, handler) {
+            if (typeof handler !== 'function') return false;
+
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return false;
+
+            ctrlObj.addEventListener(event, function(e) {
+                handler(e, ctrlObj);
+            });
+
+            return true;
+        };
+
+        /**
+         * Установка обработчика клика (упрощенный метод)
+         * @param {string} name - Имя контрола
+         * @param {Function} handler - Функция обработчик
+         */
+        D3Api.onClick = function(name, handler) {
+            return this.on(name, 'click', handler);
+        };
+
+        /**
+         * Установка обработчика изменения (упрощенный метод)
+         * @param {string} name - Имя контрола
+         * @param {Function} handler - Функция обработчик
+         */
+        D3Api.onChange = function(name, handler) {
+            return this.on(name, 'change', handler);
+        };
+
+        /**
+         * Установка CSS класса для контрола
+         * @param {string} name - Имя контрола
+         * @param {string} className - Имя класса
+         */
+        D3Api.addClass = function(name, className) {
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return false;
+
+            ctrlObj.classList.add(className);
+            return true;
+        };
+
+        /**
+         * Удаление CSS класса у контрола
+         * @param {string} name - Имя контрола
+         * @param {string} className - Имя класса
+         */
+        D3Api.removeClass = function(name, className) {
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return false;
+
+            ctrlObj.classList.remove(className);
+            return true;
+        };
+
+        /**
+         * Проверка наличия CSS класса у контрола
+         * @param {string} name - Имя контрола
+         * @param {string} className - Имя класса
+         */
+        D3Api.hasClass = function(name, className) {
+            var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj) return false;
+
+            return ctrlObj.classList.contains(className);
+        };
+
+        console.log('D3Api: Universal control methods extended successfully');
+    })();
+
 document.addEventListener("DOMContentLoaded", function() {
     D3Api.initSession(function() {
         var elementsWithNameAttribute = D3Api.D3MainContainer.querySelectorAll('[name][cmptype]');
