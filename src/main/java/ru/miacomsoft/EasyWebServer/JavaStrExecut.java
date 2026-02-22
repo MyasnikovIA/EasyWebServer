@@ -81,7 +81,7 @@ public class JavaStrExecut {
                 SpecialClassLoader classLoader = new SpecialClassLoader();
                 compileMemoryMemory(src, "SpecialClassToCompileV2", classLoader);
                 compileObject.ClassNat = Class.forName("SpecialClassToCompileV2", false, classLoader);
-                compileObject.ObjectInstance = compileObject.ClassNat.newInstance();
+                compileObject.ObjectInstance = compileObject.ClassNat.getDeclaredConstructor().newInstance();
                 InstanceClassHash.put(hashCrs, compileObject); // запоминаем созданный экземпляр класса
             } else {
                 compileObject = (CompileObject) InstanceClassHash.get(hashCrs);
@@ -130,7 +130,7 @@ public class JavaStrExecut {
                 compileMemoryMemory(src, "SpecialClassToCompileV2", classLoader);
                 CompileObject compileObject = new CompileObject();
                 compileObject.ClassNat = Class.forName("SpecialClassToCompileV2", false, classLoader);
-                compileObject.ObjectInstance = compileObject.ClassNat.newInstance();
+                compileObject.ObjectInstance = compileObject.ClassNat.getDeclaredConstructor().newInstance();
                 InstanceClassHash.put(hashCrs, compileObject); // запоминаем созданный экземпляр класса
             }
         } catch (Exception e) {
@@ -307,7 +307,7 @@ public class JavaStrExecut {
             try {
                 CompileObject compileObject = new CompileObject();
                 compileObject.ClassNat = Class.forName("SpecialClassToCompileV3", false, classLoader);
-                compileObject.ObjectInstance = compileObject.ClassNat.newInstance();
+                compileObject.ObjectInstance = compileObject.ClassNat.getDeclaredConstructor().newInstance();
                 compileObject.CodeText = src;
                 InstanceClassHash.put(hashCrs, compileObject); // запоминаем созданный экземпляр класса
                 InstanceClassName.put(ServerConstant.config.APP_NAME + "_" + name, compileObject);
@@ -328,6 +328,15 @@ public class JavaStrExecut {
      * @return
      */
     public boolean compileFile(String rootPath, String requestPath, JSONObject info) {
+        return compileFile(rootPath, requestPath, info, false);
+    }
+
+    /**
+     * Компиляция кода с присваеванием имени, по котором  можно будет его найти
+     *
+     * @return
+     */
+    public boolean compileFile(String rootPath, String requestPath, JSONObject info, boolean debugMode) {
         if (info == null) {
             info = new JSONObject();
         }
@@ -344,7 +353,7 @@ public class JavaStrExecut {
             long lastModified = nameFileObj.lastModified(); // дата последней модификации файла
             String hashCrs ="";
             // Если Java файл не был скомпилирован, или был модифицирован, тогда перекомпилируем его.
-            if (!InstanceClassName.containsKey(requestPath) || ((CompileObject) InstanceClassName.get(requestPath)).lastModified != lastModified) { //
+            if (!InstanceClassName.containsKey(requestPath) || ((CompileObject) InstanceClassName.get(requestPath)).lastModified != lastModified || debugMode) { //
                 InputStream in = new FileInputStream(resourcePath);
                 InputStreamReader inputStreamReader = new InputStreamReader(in);
                 StringBuffer sb = new StringBuffer();
@@ -363,7 +372,7 @@ public class JavaStrExecut {
                 info.put("compile", false);
             }
 
-            if (!InstanceClassHash.containsKey(hashCrs)) {
+            if (!InstanceClassHash.containsKey(hashCrs) || debugMode) {
                 SpecialClassLoader classLoader = new SpecialClassLoader();
                 if (!compileMemoryMemory(src, classNameText, classLoader, null, info)) {
                     return false;
@@ -371,7 +380,7 @@ public class JavaStrExecut {
                 try {
                     CompileObject compileObject = new CompileObject();
                     compileObject.ClassNat = Class.forName(classNameText, false, classLoader);
-                    compileObject.ObjectInstance = compileObject.ClassNat.newInstance();
+                    compileObject.ObjectInstance = compileObject.ClassNat.getDeclaredConstructor().newInstance();
                     compileObject.CodeText = src;
                     for ( Method method :compileObject.ClassNat.getMethods()) {
                         for (Class paranType: method.getParameterTypes()) {
@@ -385,7 +394,7 @@ public class JavaStrExecut {
                     compileObject.HashClass = hashCrs;
                     InstanceClassHash.put(hashCrs, compileObject); // запоминаем созданный экземпляр класса
                     InstanceClassName.put(requestPath, compileObject);
-                    System.out.println("COMPILE File:" + requestPath);
+                    System.out.println("COMPILE File:" + requestPath + (debugMode ? " (debug mode)" : ""));
                     info.put("compile", true);
                 } catch (Exception e) {
                     info.put("error", parseErrorRunJava(e));
@@ -406,7 +415,10 @@ public class JavaStrExecut {
     public void runJavaFile(HttpExchange query) {
         JSONObject infoCompile = new JSONObject();
         try {
-            if (compileFile(ServerConstant.config.WEBAPP_DIR, query.requestPath, infoCompile)) {
+            // Проверяем режим отладки из сессии
+            boolean debugMode = query.isDebugMode();
+
+            if (compileFile(ServerConstant.config.WEBAPP_DIR, query.requestPath, infoCompile, debugMode)) {
                 query.mimeType = "text/html";
                 CompileObject compileObject = (CompileObject) InstanceClassName.get(query.requestPath);
                 Method meth = null;
@@ -467,7 +479,10 @@ public class JavaStrExecut {
                     query.sendHtml(new String(messageBytes));
                 }
             } else {
-                if (compileFile(ServerConstant.config.WEBAPP_DIR, query.requestPath, infoCompile)) {
+                // Проверяем режим отладки из сессии
+                boolean debugMode = query.isDebugMode();
+
+                if (compileFile(ServerConstant.config.WEBAPP_DIR, query.requestPath, infoCompile, debugMode)) {
                     query.mimeType = "text/html";
                     CompileObject compileObject = (CompileObject) InstanceClassName.get(query.requestPath);
                     Class[] argTypes = new Class[]{HttpExchange.class};

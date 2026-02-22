@@ -557,8 +557,10 @@ public class ServerResourceHandler implements Runnable {
     }
 
     private void setDebugMode() {
+        // Режим отладки теперь хранится в сессии пользователя
         if (query.requestParam.has("debug")) {
-            ServerConstant.config.DEBUG = "1".equals(query.requestParam.getString("debug"));
+            boolean debugMode = "1".equals(query.requestParam.getString("debug"));
+            query.session.put("debug_mode", debugMode);
         }
     }
 
@@ -670,10 +672,16 @@ public class ServerResourceHandler implements Runnable {
         String lastModified = String.valueOf(file.lastModified());
         Resource res;
 
-        if (!ServerConstant.config.DEBUG) {
+        // Проверяем режим отладки из сессии
+        boolean debugMode = false;
+        if (query.session != null && query.session.containsKey("debug_mode")) {
+            debugMode = (boolean) query.session.get("debug_mode");
+        }
+
+        if (!debugMode) {
             res = getCachedResource(file, resourcePath, lastModified);
         } else {
-            res = readResource(file, query, resourcePath, ServerConstant.config.WEBAPP_DIR, "");
+            res = readResource(file, query, resourcePath, getWebappDirForFile(file), "");
         }
 
         query.mimeType = res.mimeType;
@@ -816,9 +824,15 @@ public class ServerResourceHandler implements Runnable {
                 Element els = doc.getElementsByTag("body").get(0);
                 doc.attr("doc_path", resourcePath);
                 doc.attr("rootPath", rootPath);
+
+                // Передаем режим отладки в компоненты через атрибут документа
+                boolean debugMode = query.isDebugMode();
+                doc.attr("debug_mode", String.valueOf(debugMode));
+
                 parseElementV2(doc, els, null);
                 doc.removeAttr("doc_path");
                 doc.removeAttr("rootPath");
+                doc.removeAttr("debug_mode");
                 doc.getElementsByTag("body").get(0).replaceWith(els);
                 Element elsDst = doc.getElementsByTag("html").get(0);
                 bout.write(elsDst.toString().getBytes(StandardCharsets.UTF_8));

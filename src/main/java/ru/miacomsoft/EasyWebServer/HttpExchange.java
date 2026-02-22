@@ -415,4 +415,14 @@ public class HttpExchange {
         sbError.append("</pre>");
         return sbError.toString();
     }
+    /**
+     * Получить режим отладки для текущей сессии
+     * @return true если включен режим отладки
+     */
+    public boolean isDebugMode() {
+        if (session != null && session.containsKey("debug_mode")) {
+            return (boolean) session.get("debug_mode");
+        }
+        return false;
+    }
 }
