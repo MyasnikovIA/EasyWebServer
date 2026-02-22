@@ -5,6 +5,7 @@ import ru.miacomsoft.EasyWebServer.HttpExchange;
 /**
  * JavaScript библиотека для компонента cmpDataset
  * Подключается автоматически при наличии cmpDataset на странице
+ * Использует новый механизм хранения данных D3Api
  */
 public class cmpDataset_js {
 
@@ -15,6 +16,7 @@ public class cmpDataset_js {
         sb.append("/**\n");
         sb.append(" * JavaScript библиотека для компонента cmpDataset\n");
         sb.append(" * Предоставляет методы для работы с датасетами на клиенте\n");
+        sb.append(" * Использует новый механизм хранения данных D3Api\n");
         sb.append(" */\n");
         sb.append("(function() {\n");
         sb.append("    // Предотвращаем повторную инициализацию\n");
@@ -194,14 +196,25 @@ public class cmpDataset_js {
         sb.append("            var varInfo = jsonVars[key];\n");
         sb.append("            var value = '';\n");
         sb.append("\n");
+        sb.append("            // Используем новый механизм D3Api для получения значений\n");
         sb.append("            if (varInfo['srctype'] === 'var') {\n");
-        sb.append("                value = window.getVar ? window.getVar(varInfo['src']) || varInfo['defaultVal'] || '' : '';\n");
+        sb.append("                if (window.D3Api && D3Api.getVar) {\n");
+        sb.append("                    value = D3Api.getVar(varInfo['src']) || varInfo['defaultVal'] || '';\n");
+        sb.append("                } else {\n");
+        sb.append("                    value = window.getVar ? window.getVar(varInfo['src']) || varInfo['defaultVal'] || '' : '';\n");
+        sb.append("                }\n");
         sb.append("            } else if (varInfo['srctype'] === 'ctrl') {\n");
         sb.append("                if (window.D3Api && D3Api.getValue) {\n");
         sb.append("                    value = D3Api.getValue(varInfo['src']) || varInfo['defaultVal'] || '';\n");
         sb.append("                } else {\n");
         sb.append("                    var ctrlElement = document.querySelector('[name=\"' + varInfo['src'] + '\"]');\n");
         sb.append("                    value = ctrlElement ? ctrlElement.value : (varInfo['defaultVal'] || '');\n");
+        sb.append("                }\n");
+        sb.append("            } else if (varInfo['srctype'] === 'session') {\n");
+        sb.append("                if (window.D3Api && D3Api.getSession) {\n");
+        sb.append("                    value = D3Api.getSession(varInfo['src']) || varInfo['defaultVal'] || '';\n");
+        sb.append("                } else {\n");
+        sb.append("                    value = varInfo['defaultVal'] || '';\n");
         sb.append("                }\n");
         sb.append("            } else {\n");
         sb.append("                value = varInfo['defaultVal'] || '';\n");
@@ -210,7 +223,7 @@ public class cmpDataset_js {
         sb.append("            requestData[key] = {\n");
         sb.append("                'srctype': varInfo['srctype'],\n");
         sb.append("                'src': varInfo['src'],\n");
-        sb.append("                'value': value,\n");
+        sb.append("                'value': String(value),\n");
         sb.append("                'defaultVal': varInfo['defaultVal'] || ''\n");
         sb.append("            };\n");
         sb.append("\n");
@@ -242,6 +255,7 @@ public class cmpDataset_js {
         sb.append("                return;\n");
         sb.append("            }\n");
         sb.append("\n");
+        sb.append("            // Обрабатываем выходные переменные через новый механизм D3Api\n");
         sb.append("            if (dataObj['vars_out']) {\n");
         sb.append("                var outVars = dataObj['vars_out'];\n");
         sb.append("                for (var key in outVars) {\n");
@@ -253,7 +267,9 @@ public class cmpDataset_js {
         sb.append("                    else if (value === 'false') value = false;\n");
         sb.append("\n");
         sb.append("                    if (varInfo['srctype'] === 'var') {\n");
-        sb.append("                        if (window.setVar) {\n");
+        sb.append("                        if (window.D3Api && D3Api.setVar) {\n");
+        sb.append("                            D3Api.setVar(varInfo['src'], value);\n");
+        sb.append("                        } else if (window.setVar) {\n");
         sb.append("                            window.setVar(varInfo['src'], value);\n");
         sb.append("                        }\n");
         sb.append("                    } else if (varInfo['srctype'] === 'ctrl') {\n");
@@ -263,6 +279,10 @@ public class cmpDataset_js {
         sb.append("                        } else {\n");
         sb.append("                            var targetElement = document.querySelector('[name=\"' + varInfo['src'] + '\"]');\n");
         sb.append("                            if (targetElement) targetElement.value = value;\n");
+        sb.append("                        }\n");
+        sb.append("                    } else if (varInfo['srctype'] === 'session') {\n");
+        sb.append("                        if (window.D3Api && D3Api.setSession) {\n");
+        sb.append("                            D3Api.setSession(varInfo['src'], value);\n");
         sb.append("                        }\n");
         sb.append("                    }\n");
         sb.append("                }\n");

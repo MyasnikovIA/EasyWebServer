@@ -5,6 +5,7 @@ import ru.miacomsoft.EasyWebServer.HttpExchange;
 /**
  * JavaScript библиотека для компонента cmpAction
  * Подключается автоматически при наличии cmpAction на странице
+ * Использует новый механизм хранения данных D3Api
  */
 public class cmpAction_js {
 
@@ -15,6 +16,7 @@ public class cmpAction_js {
         sb.append("/**\n");
         sb.append(" * JavaScript библиотека для компонента cmpAction\n");
         sb.append(" * Предоставляет методы для работы с действиями на клиенте\n");
+        sb.append(" * Использует новый механизм хранения данных D3Api\n");
         sb.append(" */\n");
         sb.append("(function() {\n");
         sb.append("    // Предотвращаем повторную инициализацию\n");
@@ -182,8 +184,13 @@ public class cmpAction_js {
         sb.append("            var defaultVal = varInfo.defaultVal || '';\n");
         sb.append("            var len = varInfo.len || '';\n");
         sb.append("\n");
+        sb.append("            // Используем новый механизм D3Api для получения значений\n");
         sb.append("            if (srctype === 'var') {\n");
-        sb.append("                value = window.getVar ? window.getVar(src) || defaultVal : defaultVal;\n");
+        sb.append("                if (window.D3Api && D3Api.getVar) {\n");
+        sb.append("                    value = D3Api.getVar(src) || defaultVal;\n");
+        sb.append("                } else {\n");
+        sb.append("                    value = window.getVar ? window.getVar(src) || defaultVal : defaultVal;\n");
+        sb.append("                }\n");
         sb.append("            } else if (srctype === 'ctrl') {\n");
         sb.append("                if (window.D3Api && D3Api.getValue) {\n");
         sb.append("                    value = D3Api.getValue(src) || defaultVal;\n");
@@ -192,7 +199,11 @@ public class cmpAction_js {
         sb.append("                    value = ctrlElement ? ctrlElement.value : defaultVal;\n");
         sb.append("                }\n");
         sb.append("            } else if (srctype === 'session') {\n");
-        sb.append("                value = defaultVal;\n");
+        sb.append("                if (window.D3Api && D3Api.getSession) {\n");
+        sb.append("                    value = D3Api.getSession(src) || defaultVal;\n");
+        sb.append("                } else {\n");
+        sb.append("                    value = defaultVal;\n");
+        sb.append("                }\n");
         sb.append("            }\n");
         sb.append("\n");
         sb.append("            requestData[key] = {\n");
@@ -235,7 +246,7 @@ public class cmpAction_js {
         sb.append("                console.error('Action error:', dataObj.ERROR);\n");
         sb.append("            }\n");
         sb.append("\n");
-        sb.append("            // Обрабатываем выходные переменные\n");
+        sb.append("            // Обрабатываем выходные переменные через новый механизм D3Api\n");
         sb.append("            if (dataObj.vars) {\n");
         sb.append("                var data = dataObj.vars;\n");
         sb.append("                for (var key in data) {\n");
@@ -252,7 +263,9 @@ public class cmpAction_js {
         sb.append("                        console.log('Setting output:', {key, srctype, src, value});\n");
         sb.append("\n");
         sb.append("                        if (srctype === 'var') {\n");
-        sb.append("                            if (window.setVar) {\n");
+        sb.append("                            if (window.D3Api && D3Api.setVar) {\n");
+        sb.append("                                D3Api.setVar(src, value);\n");
+        sb.append("                            } else if (window.setVar) {\n");
         sb.append("                                window.setVar(src, value);\n");
         sb.append("                            }\n");
         sb.append("                        } else if (srctype === 'ctrl') {\n");
@@ -262,6 +275,10 @@ public class cmpAction_js {
         sb.append("                            } else {\n");
         sb.append("                                var targetElement = document.querySelector('[name=\"' + src + '\"]');\n");
         sb.append("                                if (targetElement) targetElement.value = value;\n");
+        sb.append("                            }\n");
+        sb.append("                        } else if (srctype === 'session') {\n");
+        sb.append("                            if (window.D3Api && D3Api.setSession) {\n");
+        sb.append("                                D3Api.setSession(src, value);\n");
         sb.append("                            }\n");
         sb.append("                        }\n");
         sb.append("                    }\n");

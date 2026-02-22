@@ -1,4 +1,5 @@
 window.GLOBAL_VARS = {};
+window.GLOBAL_SESSION = {};
 
 // Полифиллы для старых браузеров
 if (!Element.prototype.matches) {
@@ -18,7 +19,15 @@ if (!Element.prototype.closest) {
 
 D3Api = new function () {
     var GLOBAL_VARS = {};
+    var GLOBAL_SESSION = {};
     var GLOBAL_CTRL = {};
+
+    // Хранилища для callback-функций отслеживания изменений
+    var VAR_WATCHERS = {};      // для переменных (srctype="var")
+    var VALUE_WATCHERS = {};    // для значений контролов (srctype="ctrl")
+    var CAPTION_WATCHERS = {};  // для подписей (srctype="caption")
+    var SESSION_WATCHERS = {};  // для сессионных переменных (srctype="session")
+
     this.Form = {}
     this.forms = {};
     this.GLOBAL_ACTION = {};
@@ -34,51 +43,532 @@ D3Api = new function () {
         D3Api.D3MainContainer = D3Api.MainDom;
         if (!D3Api.D3MainContainer || D3Api.D3MainContainer.length == 0) {
             let tagArr = document.getElementsByTagName('html');
-            if (tagArr.length>0) {
+            if (tagArr.length > 0) {
                 D3Api.D3MainContainer = tagArr[0];
             }
         }
     }
 
     /**
-     * Установка переменной
-     * @param name {string} - Имя переменной
-     * @param value {string} - значение.
+     * Работа с переменными страницы (srctype="var")
      */
     this.setVar = function(name, value) {
-        GLOBAL_VARS[name] = value;
+        var oldValue = GLOBAL_VARS[name];
+        var newValue = value;
+
+        // Вызываем watchers перед изменением
+        if (VAR_WATCHERS[name]) {
+            for (var i = 0; i < VAR_WATCHERS[name].length; i++) {
+                var watcher = VAR_WATCHERS[name][i];
+                var result = watcher.callback(newValue, oldValue);
+                // Если callback вернул значение (не undefined), используем его
+                if (result !== undefined) {
+                    newValue = result;
+                }
+            }
+        }
+
+        GLOBAL_VARS[name] = newValue;
+
+        // Генерируем событие изменения
+        var event = new CustomEvent('varChanged', {
+            detail: { name: name, newValue: newValue, oldValue: oldValue },
+            bubbles: true
+        });
+        document.dispatchEvent(event);
+    }
+
+    this.getVar = function(name, defValue) {
+        return GLOBAL_VARS[name] !== undefined ? GLOBAL_VARS[name] : defValue;
     }
 
     /**
-     * Получение значений от имени переменной
-     * @param name {string} - Имя переменной
-     * @param defValue {string} - значение по умолчанию
-     * @returns {string}
+     * Добавление отслеживания изменения переменной
+     * @param {string} name - Имя переменной
+     * @param {function} callback - Функция обратного вызова (newValue, oldValue)
+     * @returns {string} ID подписки для возможного удаления
      */
-    this.getVar = function(name, defValue) {
-        return GLOBAL_VARS[name] || defValue;
+    this.onChangeVar = function(name, callback) {
+        if (typeof callback !== 'function') return null;
+
+        if (!VAR_WATCHERS[name]) {
+            VAR_WATCHERS[name] = [];
+        }
+
+        var watcherId = 'var_' + name + '_' + Date.now() + '_' + Math.random();
+        VAR_WATCHERS[name].push({
+            id: watcherId,
+            callback: callback
+        });
+
+        return watcherId;
     }
 
+    /**
+     * Удаление отслеживания изменения переменной
+     * @param {string|function} nameOrId - Имя переменной или ID подписки
+     * @param {function} [callback] - Опционально, конкретный callback для удаления
+     */
+    this.offChangeVar = function(nameOrId, callback) {
+        // Если передан ID подписки (строка, начинающаяся с 'var_')
+        if (typeof nameOrId === 'string' && nameOrId.indexOf('var_') === 0) {
+            for (var name in VAR_WATCHERS) {
+                VAR_WATCHERS[name] = VAR_WATCHERS[name].filter(function(w) {
+                    return w.id !== nameOrId;
+                });
+                if (VAR_WATCHERS[name].length === 0) {
+                    delete VAR_WATCHERS[name];
+                }
+            }
+        }
+        // Если передано имя переменной
+        else if (typeof nameOrId === 'string') {
+            if (callback && typeof callback === 'function') {
+                // Удаляем конкретный callback по имени
+                if (VAR_WATCHERS[nameOrId]) {
+                    VAR_WATCHERS[nameOrId] = VAR_WATCHERS[nameOrId].filter(function(w) {
+                        return w.callback !== callback;
+                    });
+                    if (VAR_WATCHERS[nameOrId].length === 0) {
+                        delete VAR_WATCHERS[nameOrId];
+                    }
+                }
+            } else {
+                // Удаляем все callback для указанной переменной
+                delete VAR_WATCHERS[nameOrId];
+            }
+        }
+    }
+
+    /**
+     * Работа с сессионными переменными (srctype="session")
+     */
+    this.setSession = function(name, value) {
+        var oldValue = GLOBAL_SESSION[name];
+        var newValue = value;
+
+        // Вызываем watchers перед изменением
+        if (SESSION_WATCHERS[name]) {
+            for (var i = 0; i < SESSION_WATCHERS[name].length; i++) {
+                var watcher = SESSION_WATCHERS[name][i];
+                var result = watcher.callback(newValue, oldValue);
+                // Если callback вернул значение (не undefined), используем его
+                if (result !== undefined) {
+                    newValue = result;
+                }
+            }
+        }
+
+        GLOBAL_SESSION[name] = newValue;
+
+        fetch('/{component}/session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: 'set',
+                name: name,
+                value: newValue
+            })
+        })
+            .then(response => response.json())
+            .then(function(response) {
+                var event = new CustomEvent('sessionSaved', {
+                    detail: { name: name, value: newValue },
+                    bubbles: true
+                });
+                document.dispatchEvent(event);
+            })
+            .catch(error => console.error('Error saving session:', error));
+
+        var event = new CustomEvent('sessionChanged', {
+            detail: { name: name, newValue: newValue, oldValue: oldValue },
+            bubbles: true
+        });
+        document.dispatchEvent(event);
+    }
+
+    this.getSession = function(name, defValue) {
+        return GLOBAL_SESSION[name] !== undefined ? GLOBAL_SESSION[name] : defValue;
+    }
+
+    /**
+     * Добавление отслеживания изменения сессионной переменной
+     * @param {string} name - Имя переменной
+     * @param {function} callback - Функция обратного вызова (newValue, oldValue)
+     * @returns {string} ID подписки
+     */
+    this.onChangeSession = function(name, callback) {
+        if (typeof callback !== 'function') return null;
+
+        if (!SESSION_WATCHERS[name]) {
+            SESSION_WATCHERS[name] = [];
+        }
+
+        var watcherId = 'sess_' + name + '_' + Date.now() + '_' + Math.random();
+        SESSION_WATCHERS[name].push({
+            id: watcherId,
+            callback: callback
+        });
+
+        return watcherId;
+    }
+
+    /**
+     * Удаление отслеживания изменения сессионной переменной
+     * @param {string|function} nameOrId - Имя переменной или ID подписки
+     * @param {function} [callback] - Опционально, конкретный callback для удаления
+     */
+    this.offChangeSession = function(nameOrId, callback) {
+        // Если передан ID подписки
+        if (typeof nameOrId === 'string' && nameOrId.indexOf('sess_') === 0) {
+            for (var name in SESSION_WATCHERS) {
+                SESSION_WATCHERS[name] = SESSION_WATCHERS[name].filter(function(w) {
+                    return w.id !== nameOrId;
+                });
+                if (SESSION_WATCHERS[name].length === 0) {
+                    delete SESSION_WATCHERS[name];
+                }
+            }
+        }
+        // Если передано имя переменной
+        else if (typeof nameOrId === 'string') {
+            if (callback && typeof callback === 'function') {
+                // Удаляем конкретный callback по имени
+                if (SESSION_WATCHERS[nameOrId]) {
+                    SESSION_WATCHERS[nameOrId] = SESSION_WATCHERS[nameOrId].filter(function(w) {
+                        return w.callback !== callback;
+                    });
+                    if (SESSION_WATCHERS[nameOrId].length === 0) {
+                        delete SESSION_WATCHERS[nameOrId];
+                    }
+                }
+            } else {
+                // Удаляем все callback для указанной переменной
+                delete SESSION_WATCHERS[nameOrId];
+            }
+        }
+    }
+
+    /**
+     * Работа с подписями контролов (srctype="caption")
+     */
+    this.setCaption = function(name, text) {
+        var ctrl = this.getControl(name);
+        if (ctrl) {
+            var oldText = this.getCaption(name);
+            var newText = text;
+
+            // Вызываем watchers перед изменением
+            if (CAPTION_WATCHERS[name]) {
+                for (var i = 0; i < CAPTION_WATCHERS[name].length; i++) {
+                    var watcher = CAPTION_WATCHERS[name][i];
+                    var result = watcher.callback(newText, oldText);
+                    // Если callback вернул значение (не undefined), используем его
+                    if (result !== undefined) {
+                        newText = result;
+                    }
+                }
+            }
+
+            var captionEl = ctrl.querySelector('[block="caption"]');
+            if (captionEl) {
+                captionEl.textContent = newText;
+            } else {
+                ctrl.textContent = newText;
+            }
+
+            var event = new CustomEvent('captionChanged', {
+                detail: { name: name, newText: newText, oldText: oldText },
+                bubbles: true
+            });
+            document.dispatchEvent(event);
+
+            return true;
+        }
+        return false;
+    }
+
+    this.getCaption = function(name) {
+        var ctrl = this.getControl(name);
+        if (ctrl) {
+            var captionEl = ctrl.querySelector('[block="caption"]');
+            if (captionEl) {
+                return captionEl.textContent;
+            } else {
+                return ctrl.textContent;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Добавление отслеживания изменения подписи
+     * @param {string} name - Имя контрола
+     * @param {function} callback - Функция обратного вызова (newText, oldText)
+     * @returns {string} ID подписки
+     */
+    this.onChangeCaption = function(name, callback) {
+        if (typeof callback !== 'function') return null;
+
+        if (!CAPTION_WATCHERS[name]) {
+            CAPTION_WATCHERS[name] = [];
+        }
+
+        var watcherId = 'cap_' + name + '_' + Date.now() + '_' + Math.random();
+        CAPTION_WATCHERS[name].push({
+            id: watcherId,
+            callback: callback
+        });
+
+        return watcherId;
+    }
+
+    /**
+     * Удаление отслеживания изменения подписи
+     * @param {string|function} nameOrId - Имя контрола или ID подписки
+     * @param {function} [callback] - Опционально, конкретный callback для удаления
+     */
+    this.offChangeCaption = function(nameOrId, callback) {
+        // Если передан ID подписки
+        if (typeof nameOrId === 'string' && nameOrId.indexOf('cap_') === 0) {
+            for (var name in CAPTION_WATCHERS) {
+                CAPTION_WATCHERS[name] = CAPTION_WATCHERS[name].filter(function(w) {
+                    return w.id !== nameOrId;
+                });
+                if (CAPTION_WATCHERS[name].length === 0) {
+                    delete CAPTION_WATCHERS[name];
+                }
+            }
+        }
+        // Если передано имя контрола
+        else if (typeof nameOrId === 'string') {
+            if (callback && typeof callback === 'function') {
+                // Удаляем конкретный callback по имени
+                if (CAPTION_WATCHERS[nameOrId]) {
+                    CAPTION_WATCHERS[nameOrId] = CAPTION_WATCHERS[nameOrId].filter(function(w) {
+                        return w.callback !== callback;
+                    });
+                    if (CAPTION_WATCHERS[nameOrId].length === 0) {
+                        delete CAPTION_WATCHERS[nameOrId];
+                    }
+                }
+            } else {
+                // Удаляем все callback для указанного контрола
+                delete CAPTION_WATCHERS[nameOrId];
+            }
+        }
+    }
+
+    /**
+     * Работа со значениями контролов (srctype="ctrl")
+     */
+    this.setValue = function(name, value) {
+        var ctrlObj = document.querySelector('[name="' + name + '"]');
+        if (!ctrlObj) return false;
+
+        var oldValue = this.getValue(name);
+        var newValue = value;
+
+        // Вызываем watchers перед изменением
+        if (VALUE_WATCHERS[name]) {
+            for (var i = 0; i < VALUE_WATCHERS[name].length; i++) {
+                var watcher = VALUE_WATCHERS[name][i];
+                var result = watcher.callback(newValue, oldValue);
+                // Если callback вернул значение (не undefined), используем его
+                if (result !== undefined) {
+                    newValue = result;
+                }
+            }
+        }
+
+        var tagName = ctrlObj.tagName.toLowerCase();
+
+        if (tagName === 'input') {
+            var type = ctrlObj.type.toLowerCase();
+            if (type === 'checkbox') {
+                ctrlObj.checked = (newValue === true || newValue === 'on' || newValue === 'true');
+            } else if (type === 'radio') {
+                var radioName = ctrlObj.getAttribute('name');
+                var radios = document.querySelectorAll('input[name="' + radioName + '"]');
+                for (var i = 0; i < radios.length; i++) {
+                    if (radios[i].value == newValue) {
+                        radios[i].checked = true;
+                        break;
+                    }
+                }
+            } else {
+                ctrlObj.value = newValue;
+            }
+        } else if (tagName === 'select' || tagName === 'textarea') {
+            ctrlObj.value = newValue;
+        } else {
+            ctrlObj.textContent = newValue;
+        }
+
+        // Генерируем событие change
+        var changeEvent = new Event('change', { bubbles: true });
+        ctrlObj.dispatchEvent(changeEvent);
+
+        var event = new CustomEvent('valueChanged', {
+            detail: { name: name, newValue: newValue, oldValue: oldValue },
+            bubbles: true
+        });
+        document.dispatchEvent(event);
+
+        return true;
+    }
+
+    this.getValue = function(name, defValue) {
+        var ctrlObj = document.querySelector('[name="' + name + '"]');
+        if (!ctrlObj) return defValue;
+
+        var tagName = ctrlObj.tagName.toLowerCase();
+
+        if (tagName === 'input') {
+            var type = ctrlObj.type.toLowerCase();
+            if (type === 'checkbox') {
+                return ctrlObj.checked;
+            } else if (type === 'radio') {
+                var radioName = ctrlObj.getAttribute('name');
+                var checkedRadio = document.querySelector('input[name="' + radioName + '"]:checked');
+                return checkedRadio ? checkedRadio.value : defValue;
+            } else {
+                var val = ctrlObj.value;
+                return val !== undefined && val !== null ? val : defValue;
+            }
+        } else if (tagName === 'select' || tagName === 'textarea') {
+            var val = ctrlObj.value;
+            return val !== undefined && val !== null ? val : defValue;
+        } else {
+            return ctrlObj.textContent || defValue;
+        }
+    }
+
+    /**
+     * Добавление отслеживания изменения значения контрола
+     * @param {string} name - Имя контрола
+     * @param {function} callback - Функция обратного вызова (newValue, oldValue)
+     * @returns {string} ID подписки
+     */
+    this.onChangeValue = function(name, callback) {
+        if (typeof callback !== 'function') return null;
+
+        if (!VALUE_WATCHERS[name]) {
+            VALUE_WATCHERS[name] = [];
+        }
+
+        var watcherId = 'val_' + name + '_' + Date.now() + '_' + Math.random();
+        VALUE_WATCHERS[name].push({
+            id: watcherId,
+            callback: callback
+        });
+
+        return watcherId;
+    }
+
+    /**
+     * Удаление отслеживания изменения значения контрола
+     * @param {string|function} nameOrId - Имя контрола или ID подписки
+     * @param {function} [callback] - Опционально, конкретный callback для удаления
+     */
+    this.offChangeValue = function(nameOrId, callback) {
+        // Если передан ID подписки
+        if (typeof nameOrId === 'string' && nameOrId.indexOf('val_') === 0) {
+            for (var name in VALUE_WATCHERS) {
+                VALUE_WATCHERS[name] = VALUE_WATCHERS[name].filter(function(w) {
+                    return w.id !== nameOrId;
+                });
+                if (VALUE_WATCHERS[name].length === 0) {
+                    delete VALUE_WATCHERS[name];
+                }
+            }
+        }
+        // Если передано имя контрола
+        else if (typeof nameOrId === 'string') {
+            if (callback && typeof callback === 'function') {
+                // Удаляем конкретный callback по имени
+                if (VALUE_WATCHERS[nameOrId]) {
+                    VALUE_WATCHERS[nameOrId] = VALUE_WATCHERS[nameOrId].filter(function(w) {
+                        return w.callback !== callback;
+                    });
+                    if (VALUE_WATCHERS[nameOrId].length === 0) {
+                        delete VALUE_WATCHERS[nameOrId];
+                    }
+                }
+            } else {
+                // Удаляем все callback для указанного контрола
+                delete VALUE_WATCHERS[nameOrId];
+            }
+        }
+    }
+
+    /**
+     * Получение контрола по имени
+     */
+    this.getControl = function(name) {
+        if (GLOBAL_CTRL[name]) {
+            return GLOBAL_CTRL[name];
+        }
+        var ctrl = document.querySelector('[name="' + name + '"]');
+        if (ctrl) {
+            GLOBAL_CTRL[name] = ctrl;
+        }
+        return ctrl;
+    }
+
+    /**
+     * Инициализация сессии при загрузке страницы
+     */
+    this.initSession = function() {
+        fetch('/{component}/session?action=getAll', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => response.json())
+            .then(function(data) {
+                GLOBAL_SESSION = data;
+                var event = new CustomEvent('sessionLoaded', {
+                    detail: { data: data },
+                    bubbles: true
+                });
+                document.dispatchEvent(event);
+            })
+            .catch(error => console.error('Error loading session:', error));
+    }
+
+    // Методы для обратной совместимости
     this.setAction = function(name, obj) {
         this.GLOBAL_ACTION[name] = obj;
     }
 
-    // setActionAuto удален - теперь в cmpAction_js
+    this.setActionAuto = function(name) {
+        this.GLOBAL_ACTION[name] = {};
+    }
 
     this.setDatasetAuto = function(name) {
-        this.GLOBAL_DATA_SET[name] = {"data":[]};
+        this.GLOBAL_DATA_SET[name] = {"data": []};
     }
 
     this.setDataset = function(name, obj) {
         this.GLOBAL_DATA_SET[name] = obj;
         Object.defineProperty(this.GLOBAL_DATA_SET[name], 'data', {
             get: function() {
-                // todo: дописать обновление зависимостей, после обновления данных в датасете
+                return this._data || [];
             },
             set: function(value) {
-                // todo: дописать обновление зависимостей, после обновления данных в датасете
+                this._data = value;
+                var event = new CustomEvent('datasetChanged', {
+                    detail: { name: name, value: value },
+                    bubbles: true
+                });
+                document.dispatchEvent(event);
             }
         });
+        this.GLOBAL_DATA_SET[name]._data = obj.data || [];
     }
 
     this.getDataset = function(name) {
@@ -87,10 +577,6 @@ D3Api = new function () {
 
     this.setControlAuto = function(name, obj) {
         GLOBAL_CTRL[name] = obj;
-    }
-
-    this.getControl = function(name, obj) {
-        return GLOBAL_CTRL[name];
     }
 
     this.setLabel = function(name, text) {
@@ -102,7 +588,7 @@ D3Api = new function () {
             }
         } else {
             var ctrlObj;
-            if (typeof name === 'object') { // Если на вход подали вместо имени DOM элемент (контрола), тогда работаем с ним
+            if (typeof name === 'object') {
                 ctrlObj = name;
             } else {
                 ctrlObj = document.querySelector('[name="' + name + '"]');
@@ -130,9 +616,9 @@ D3Api = new function () {
         return null;
     }
 
-    this.setLabels = function(objText) {
-        for (const name in objText) {
-            this.setLabel(name, objText[name]);
+    this.setLabels = function(obj) {
+        for (const name in obj) {
+            this.setLabel(name, obj[name]);
         }
     }
 
@@ -144,70 +630,6 @@ D3Api = new function () {
             res[name] = this.getLabel(name);
         }
         return res;
-    }
-
-    this.getValue = function(name, defValue) {
-        var ctrlObj;
-        if (typeof name === 'object') { // Если на вход подали вместо имени DOM элемент (контрола), тогда работаем с ним
-            ctrlObj = name;
-        } else {
-            ctrlObj = document.querySelector('[name="' + name + '"]');
-        }
-
-        if (!ctrlObj) return defValue;
-
-        // Получаем значение для разных типов элементов
-        var tagName = ctrlObj.tagName.toLowerCase();
-
-        if (tagName === 'input') {
-            var type = ctrlObj.type.toLowerCase();
-            if (type === 'checkbox') {
-                return ctrlObj.checked;
-            } else if (type === 'radio') {
-                var radioName = ctrlObj.getAttribute('name');
-                var checkedRadio = document.querySelector('input[name="' + radioName + '"]:checked');
-                return checkedRadio ? checkedRadio.value : defValue;
-            } else {
-                return ctrlObj.value;
-            }
-        } else if (tagName === 'select' || tagName === 'textarea') {
-            return ctrlObj.value;
-        } else {
-            return ctrlObj.textContent;
-        }
-    }
-
-    this.setValue = function(name, value) {
-        var ctrlObj = document.querySelector('[name="' + name + '"]');
-        if (!ctrlObj) return;
-
-        var tagName = ctrlObj.tagName.toLowerCase();
-
-        if (tagName === 'input') {
-            var type = ctrlObj.type.toLowerCase();
-            if (type === 'checkbox') {
-                ctrlObj.checked = (value === true || value === 'on' || value === 'true');
-            } else if (type === 'radio') {
-                var radioName = ctrlObj.getAttribute('name');
-                var radios = document.querySelectorAll('input[name="' + radioName + '"]');
-                for (var i = 0; i < radios.length; i++) {
-                    if (radios[i].value == value) {
-                        radios[i].checked = true;
-                        break;
-                    }
-                }
-            } else {
-                ctrlObj.value = value;
-            }
-        } else if (tagName === 'select' || tagName === 'textarea') {
-            ctrlObj.value = value;
-        } else {
-            ctrlObj.textContent = value;
-        }
-
-        // Генерируем событие change
-        var changeEvent = new Event('change', { bubbles: true });
-        ctrlObj.dispatchEvent(changeEvent);
     }
 
     this.getCtrl = function(name) {
@@ -363,7 +785,8 @@ D3Api = new function () {
 window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
 
 document.addEventListener("DOMContentLoaded", function() {
-    // После загрузки страницы находим все тэги с атрибутами "name" "cmptype" и добавляем их в контролы
+    D3Api.initSession();
+
     var elementsWithNameAttribute = D3Api.D3MainContainer.querySelectorAll('[name][cmptype]');
 
     for (var i = 0; i < elementsWithNameAttribute.length; i++) {
@@ -487,4 +910,3 @@ function loadDirect(name) {
         })
         .catch(error => console.error('Error:', error));
 }
-
