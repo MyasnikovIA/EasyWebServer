@@ -1,6 +1,3 @@
-window.GLOBAL_VARS = {};
-window.GLOBAL_SESSION = {};
-
 // Полифиллы для старых браузеров
 if (!Element.prototype.matches) {
     Element.prototype.matches = Element.prototype.msMatchesSelector || Element.prototype.webkitMatchesSelector;
@@ -18,6 +15,7 @@ if (!Element.prototype.closest) {
 }
 
 D3Api = new function () {
+    // Внутренние хранилища данных
     var GLOBAL_VARS = {};
     var GLOBAL_SESSION = {};
     var GLOBAL_CTRL = {};
@@ -540,7 +538,8 @@ D3Api = new function () {
             .catch(error => console.error('Error loading session:', error));
     }
 
-    // Методы для обратной совместимости
+    // ============== Методы для обратной совместимости ==============
+
     this.setAction = function(name, obj) {
         this.GLOBAL_ACTION[name] = obj;
     }
@@ -780,8 +779,137 @@ D3Api = new function () {
         dialog.appendChild(button);
         document.body.appendChild(dialog);
     }
+
+    // ============== Глобальные функции (теперь внутри D3Api) ==============
+
+    /**
+     * Получение всех глобальных переменных
+     * @returns {Object} Объект со всеми переменными
+     */
+    this.getVars = function() {
+        return GLOBAL_VARS;
+    };
+
+    /**
+     * Установка нескольких переменных
+     * @param {Object} obj - Объект с парами ключ-значение
+     */
+    this.setVars = function(obj) {
+        for (var key in obj) {
+            this.setVar(key, obj[key]);
+        }
+    };
+
+    /**
+     * Выход из системы
+     */
+    this.logout = function() {
+        fetch('/{component}/loginDataBase?logoff=1', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => response.json())
+            .then(dataObj => {
+                if (!dataObj['connect']) {
+                    this.setLabel('ctrlErrorInfo', dataObj['error']);
+                }
+                if ('redirect' in dataObj) {
+                    window.location.href = dataObj['redirect'];
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }.bind(this);
+
+    /**
+     * Сохранение данных в сессию
+     * @param {string} name - Имя сессионной переменной
+     * @param {Object} objJson - Данные для сохранения
+     */
+    this.setSession = function(name, objJson) {
+        fetch('/{component}/session?set_session=' + name, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(objJson)
+        })
+            .then(response => response.json())
+            .then(dataObj => {
+                console.log("Session saved:", name);
+            })
+            .catch(error => console.error('Error:', error));
+    };
+
+    /**
+     * Получение данных из сессии
+     * @param {string} name - Имя сессионной переменной
+     * @returns {Object} Данные из сессии
+     */
+    this.getSession = function(name) {
+        var resObj = {};
+
+        // Синхронный XHR для совместимости (async=false)
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/{component}/session?get_session=' + name, false);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send('{}');
+
+        if (xhr.status === 200) {
+            try {
+                resObj = JSON.parse(xhr.responseText);
+            } catch (e) {
+                console.error('JSON parse error:', e);
+            }
+        }
+
+        return resObj;
+    };
+
+    /**
+     * Сохранение текущего URL для возврата
+     * @param {string} name - Имя закладки
+     */
+    this.saveDirect = function(name) {
+        if (typeof name === 'undefined') {
+            name = 'local';
+        }
+
+        fetch('/{component}/sessionDirect?set_direct=' + name, {
+            method: 'POST',
+            body: window.location.href
+        })
+            .catch(error => console.error('Error:', error));
+    };
+
+    /**
+     * Загрузка сохраненного URL
+     * @param {string} name - Имя закладки
+     */
+    this.loadDirect = function(name) {
+        if (typeof name === 'undefined') {
+            name = 'local';
+        }
+
+        fetch('/{component}/sessionDirect?get_direct=' + name, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: '{}'
+        })
+            .then(response => response.json())
+            .then(dataObj => {
+                if ('redirect' in dataObj) {
+                    window.location.href = dataObj['redirect'];
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    };
 }
 
+// Инициализация
 window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -800,113 +928,40 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 
-// ============== Глобальные функции ==============
+// ============== Глобальные функции-обертки для обратной совместимости ==============
 
 function getVars() {
-    return window.GLOBAL_VARS;
-};
+    return D3Api.getVars();
+}
 
 function setVars(obj) {
-    for (var key in obj) {
-        window.GLOBAL_VARS[key] = obj[key];
-    }
-};
+    D3Api.setVars(obj);
+}
 
 function setVar(name, value) {
-    window.GLOBAL_VARS[name] = value;
-};
+    D3Api.setVar(name, value);
+}
 
 function getVar(name, defaultValue) {
-    if (name in window.GLOBAL_VARS) {
-        return window.GLOBAL_VARS[name];
-    } else {
-        return defaultValue;
-    }
-};
+    return D3Api.getVar(name, defaultValue);
+}
 
 function logout() {
-    fetch('/{component}/loginDataBase?logoff=1', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-        .then(response => response.json())
-        .then(dataObj => {
-            if (!dataObj['connect']) {
-                D3Api.setLabel('ctrlErrorInfo', dataObj['error']);
-            }
-            if ('redirect' in dataObj) {
-                window.location.href = dataObj['redirect'];
-            }
-        })
-        .catch(error => console.error('Error:', error));
+    D3Api.logout();
 }
 
 function setSession(name, objJson) {
-    fetch('/{component}/session?set_session=' + name, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(objJson)
-    })
-        .then(response => response.json())
-        .then(dataObj => {
-            console.log("Session saved:", name);
-        })
-        .catch(error => console.error('Error:', error));
+    D3Api.setSession(name, objJson);
 }
 
 function getSession(name) {
-    var resObj = {};
-
-    // Синхронный XHR для совместимости (async=false)
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/{component}/session?get_session=' + name, false);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.send('{}');
-
-    if (xhr.status === 200) {
-        try {
-            resObj = JSON.parse(xhr.responseText);
-        } catch (e) {
-            console.error('JSON parse error:', e);
-        }
-    }
-
-    return resObj;
+    return D3Api.getSession(name);
 }
 
 function saveDirect(name) {
-    if (typeof name === 'undefined') {
-        name = 'local';
-    }
-
-    fetch('/{component}/sessionDirect?set_direct=' + name, {
-        method: 'POST',
-        body: window.location.href
-    })
-        .catch(error => console.error('Error:', error));
+    D3Api.saveDirect(name);
 }
 
 function loadDirect(name) {
-    if (typeof name === 'undefined') {
-        name = 'local';
-    }
-
-    fetch('/{component}/sessionDirect?get_direct=' + name, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: '{}'
-    })
-        .then(response => response.json())
-        .then(dataObj => {
-            if ('redirect' in dataObj) {
-                window.location.href = dataObj['redirect'];
-            }
-        })
-        .catch(error => console.error('Error:', error));
+    D3Api.loadDirect(name);
 }

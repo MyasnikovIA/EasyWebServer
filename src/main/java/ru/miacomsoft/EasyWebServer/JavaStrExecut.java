@@ -10,6 +10,7 @@ import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -540,19 +541,94 @@ public class JavaStrExecut {
     }
 
     public void runJavaServerlet(HttpExchange query) {
-        String classNameCmp = JavaStrExecut.class.getPackage().getName()+".component." + query.requestPath.split("component}/")[1];
+        String classNameCmp = null;
         try {
-            Class[] argTypes = new Class[]{HttpExchange.class};
-            Class<?> classServerlet = Class.forName(classNameCmp);
-            Method meth = classServerlet.getMethod("onPage", argTypes);
-            byte[] messageBytes = (byte[]) meth.invoke(null, query); // запуск мектода на выполнение
-            if (messageBytes != null) {
-                query.sendHtml(new String(messageBytes));
+            // Безопасное извлечение имени класса
+            String requestPath = query.requestPath;
+            if (requestPath == null || !requestPath.contains("component}/")) {
+                throw new Exception("Invalid component path: " + requestPath);
             }
+
+            String[] parts = requestPath.split("component}/");
+            if (parts.length < 2) {
+                throw new Exception("Invalid component path format: " + requestPath);
+            }
+
+            String classPath = parts[1];
+            // Убираем параметры запроса
+            if (classPath.contains("?")) {
+                classPath = classPath.substring(0, classPath.indexOf("?"));
+            }
+
+            // Формируем полное имя класса
+            String basePackage = JavaStrExecut.class.getPackage().getName();
+            classNameCmp = basePackage + ".component." + classPath.replace('/', '.');
+
+            // Убираем расширение .java если есть
+            if (classNameCmp.endsWith(".java")) {
+                classNameCmp = classNameCmp.substring(0, classNameCmp.length() - 5);
+            }
+
+            System.out.println("Looking for component class: " + classNameCmp);
+
+            Class<?> classServerlet = Class.forName(classNameCmp);
+            Method meth = classServerlet.getMethod("onPage", HttpExchange.class);
+
+            Object result;
+            if (java.lang.reflect.Modifier.isStatic(meth.getModifiers())) {
+                result = meth.invoke(null, query);
+            } else {
+                Object instance = classServerlet.getDeclaredConstructor().newInstance();
+                result = meth.invoke(instance, query);
+            }
+
+            byte[] messageBytes = null;
+            if (result instanceof byte[]) {
+                messageBytes = (byte[]) result;
+            } else if (result instanceof String) {
+                messageBytes = ((String) result).getBytes(StandardCharsets.UTF_8);
+            } else if (result != null) {
+                messageBytes = result.toString().getBytes(StandardCharsets.UTF_8);
+            }
+
+            if (messageBytes != null) {
+                // Проверяем, является ли ответ JSON
+                String responseStr = new String(messageBytes, StandardCharsets.UTF_8).trim();
+                if (responseStr.startsWith("{") || responseStr.startsWith("[")) {
+                    query.mimeType = "application/json";
+                } else {
+                    query.mimeType = "text/html";
+                }
+                query.send(messageBytes);
+            }
+
+        } catch (ClassNotFoundException e) {
+            String errorMsg = "Component class not found: " + classNameCmp + " - " + e.getMessage();
+            System.err.println("runJavaServerlet Exception: " + errorMsg);
+            sendErrorResponse(query, errorMsg, 404);
+        } catch (NoSuchMethodException e) {
+            String errorMsg = "Method 'onPage' not found in component: " + classNameCmp;
+            System.err.println("runJavaServerlet Exception: " + errorMsg);
+            sendErrorResponse(query, errorMsg, 500);
         } catch (Exception e) {
+            String errorMsg = "Error executing component: " + e.getClass().getName() + " - " + e.getMessage();
+            System.err.println("runJavaServerlet Exception: " + errorMsg);
+            e.printStackTrace();
+            sendErrorResponse(query, errorMsg, 500);
+        }
+    }
+
+    private void sendErrorResponse(HttpExchange query, String errorMessage, int statusCode) {
+        try {
+            JSONObject error = new JSONObject();
+            error.put("error", errorMessage);
+            error.put("status", statusCode);
+            query.mimeType = "application/json";
+            query.send(error.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ex) {
+            // Если не удалось отправить JSON, отправляем простой текст
             query.mimeType = "text/plain";
-            query.sendHtml(parseErrorRunJava(e));
-            System.err.println("runJavaServerlet Exception:"+e.getMessage());
+            query.send(("Error: " + errorMessage).getBytes(StandardCharsets.UTF_8));
         }
     }
 
