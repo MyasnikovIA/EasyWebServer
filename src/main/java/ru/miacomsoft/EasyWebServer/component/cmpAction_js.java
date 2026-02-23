@@ -234,7 +234,7 @@ public class cmpAction_js {
                             window.location.href = dataObj.redirect;
                             return;
                         }
-            
+                        
                         // Улучшенная обработка ошибок
                         if (dataObj.ERROR) {
                             console.error('Action error:', dataObj.ERROR);

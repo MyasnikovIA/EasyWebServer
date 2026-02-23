@@ -247,7 +247,42 @@ public class cmpDataset_js {
                             window.location.href = dataObj['redirect'];
                             return;
                         }
-            
+                        
+                            // Улучшенная обработка ошибок
+                            if (dataObj.ERROR) {
+                                console.error('Action error:', dataObj.ERROR);
+                
+                                // Если есть детальная информация об ошибке, показываем её
+                                if (typeof dataObj.ERROR === 'object') {
+                                    var errorMsg = dataObj.ERROR.message || 'Unknown error';
+                                    var errorHint = dataObj.ERROR.hint || '';
+                                    var fieldValue = dataObj.ERROR.field_value || '';
+                
+                                    // Формируем сообщение для пользователя
+                                    var userMessage = 'Ошибка выполнения действия: ' + errorMsg;
+                                    if (errorHint) {
+                                        userMessage += '\\n' + errorHint;
+                                    }
+                                    if (fieldValue) {
+                                        userMessage += '\\nЗначение поля: "' + fieldValue + '"';
+                                    }
+                
+                                    // Показываем сообщение пользователю
+                                    if (window.D3Api && D3Api.msgbox) {
+                                        D3Api.msgbox(userMessage, 'OK');
+                                    } else {
+                                        alert(userMessage);
+                                    }
+                                } else {
+                                    // Простая ошибка в виде строки
+                                    var errorStr = String(dataObj.ERROR);
+                                    if (window.D3Api && D3Api.msgbox) {
+                                        D3Api.msgbox('Ошибка: ' + errorStr, 'OK');
+                                    } else {
+                                        alert('Ошибка: ' + errorStr);
+                                    }
+                                }
+                            }
                         // Обрабатываем выходные переменные через новый механизм D3Api
                         if (dataObj['vars_out']) {
                             var outVars = dataObj['vars_out'];
