@@ -343,7 +343,6 @@ public class cmpDataset extends Base {
         String query_type = queryProperty.optString("query_type", "sql");
         String dataset_name = queryProperty.optString("dataset_name", "");
         String pg_schema = queryProperty.optString("pg_schema", "public");
-        String db_name = queryProperty.optString("db", "DB");
         String db_type = queryProperty.optString("db_type", "jdbc").toLowerCase();
         String database_name = queryProperty.optString("database_name", "default");
         boolean isOracleQuery = db_type.equals("oci8");
@@ -351,7 +350,7 @@ public class cmpDataset extends Base {
         System.out.println("Dataset name: " + dataset_name);
         System.out.println("Query type: " + query_type);
         System.out.println("DB type: " + db_type);
-        System.out.println("DB name: " + db_name);
+        System.out.println("DB name: " + database_name);
         System.out.println("PG Schema: " + pg_schema);
 
         boolean debugMode = false;
@@ -403,7 +402,7 @@ public class cmpDataset extends Base {
             // Для Oracle выполняем прямой SQL запрос
             if (isOracleQuery) {
                 // Для Oracle используем dataset_name как есть, без добавления схемы
-                executeOracleQuery(query, result, dataset_name, db_name, vars, debugMode);
+                executeOracleQuery(query, result, dataset_name, database_name, vars, debugMode);
             } else {
                 // Для PostgreSQL формируем полное имя со схемой
                 String fullDatasetName = pg_schema + "." + dataset_name;
@@ -418,118 +417,74 @@ public class cmpDataset extends Base {
         return resultText.getBytes();
     }
 
-    /**
-     * Выполняет прямой SQL запрос к Oracle
-     */
     private static void executeOracleQuery(HttpExchange query, JSONObject result, String datasetName, String dbName, JSONObject vars, boolean debugMode) {
-        Connection conn = null;
-        Statement stmt = null;
-        ResultSet rs = null;
-
         try {
-            // Получаем конфигурацию БД
-            DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("DB") ? null : dbName);
+            DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
             if (dbConfig == null) {
                 result.put("ERROR", "Database configuration not found: " + dbName);
                 return;
             }
 
-            // Получаем SQL из procedureList
             if (!procedureList.containsKey(datasetName)) {
                 result.put("ERROR", "Dataset not found: " + datasetName);
-                System.err.println("Dataset not found: " + datasetName);
                 return;
             }
 
             HashMap<String, Object> param = (HashMap<String, Object>) procedureList.get(datasetName);
             String sql = (String) param.get("SQL");
 
-            // Подставляем параметры из vars в SQL (если есть)
+            // Преобразуем vars в карту параметров
+            Map<String, Object> params = new HashMap<>();
             if (vars != null && vars.length() > 0) {
                 Iterator<String> keys = vars.keys();
                 while (keys.hasNext()) {
                     String key = keys.next();
                     Object val = vars.get(key);
-                    String value = "";
 
                     if (val instanceof JSONObject) {
                         JSONObject varOne = (JSONObject) val;
-                        value = varOne.optString("value", varOne.optString("defaultVal", ""));
+                        String value = varOne.optString("value", varOne.optString("defaultVal", ""));
+                        params.put(key, value);
                     } else {
-                        value = val.toString();
+                        params.put(key, val.toString());
                     }
-
-                    // Простая замена :paramName на значение в кавычках (для строк)
-                    sql = sql.replaceAll(":" + key + "\\b", "'" + value.replace("'", "''") + "'");
                 }
             }
 
             System.out.println("Executing Oracle SQL: " + sql);
+            System.out.println("With params: " + params);
 
-            // Подключаемся к Oracle
-            conn = OracleQuery.getConnect(dbConfig);
-            if (conn == null) {
-                result.put("ERROR", "Oracle connection failed");
-                return;
-            }
-
-            stmt = conn.createStatement();
-            rs = stmt.executeQuery(sql);
-
-            // Получаем метаданные
-            ResultSetMetaData metaData = rs.getMetaData();
-            int columnCount = metaData.getColumnCount();
-
-            JSONArray dataArray = new JSONArray();
-            while (rs.next()) {
-                JSONObject row = new JSONObject();
-                for (int i = 1; i <= columnCount; i++) {
-                    String columnName = metaData.getColumnName(i);
-                    Object value = rs.getObject(i);
-
-                    if (value == null) {
-                        row.put(columnName, JSONObject.NULL);
-                    } else if (value instanceof java.sql.Clob) {
-                        // Обработка CLOB через стандартный JDBC интерфейс
-                        Clob clob = (Clob) value;
-                        try (java.io.Reader reader = clob.getCharacterStream()) {
-                            java.io.StringWriter writer = new java.io.StringWriter();
-                            char[] buffer = new char[4096];
-                            int charsRead;
-                            while ((charsRead = reader.read(buffer)) != -1) {
-                                writer.write(buffer, 0, charsRead);
-                            }
-                            row.put(columnName, writer.toString());
-                        } catch (Exception e) {
-                            row.put(columnName, "[CLOB read error]");
-                        }
-                    } else {
-                        row.put(columnName, value);
-                    }
-                }
-                dataArray.put(row);
-            }
+            // Используем улучшенный метод OracleQuery с поддержкой параметров
+            JSONArray dataArray = OracleQuery.executeQuery(dbConfig, sql, params);
 
             result.put("data", dataArray);
+
             if (debugMode) {
                 result.put("SQL", sql);
+                result.put("params", new JSONObject(params));
             }
 
-        } catch (SQLException e) {
-            System.err.println("Oracle SQL Error: " + e.getMessage());
-            e.printStackTrace();
-            result.put("ERROR", "Oracle SQL Error: " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("Unexpected error in Oracle query: " + e.getMessage());
+            System.err.println("Error in Oracle query: " + e.getMessage());
             e.printStackTrace();
-            result.put("ERROR", "Error: " + e.getMessage());
-        } finally {
-            try { if (rs != null) rs.close(); } catch (Exception e) {}
-            try { if (stmt != null) stmt.close(); } catch (Exception e) {}
-            try { if (conn != null) conn.close(); } catch (Exception e) {}
+            result.put("ERROR", "Oracle query error: " + e.getMessage());
         }
     }
 
+    /**
+     * Проверка, является ли строка числом
+     */
+    private static boolean isNumeric(String str) {
+        if (str == null || str.isEmpty()) {
+            return false;
+        }
+        try {
+            Double.parseDouble(str);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
     /**
      * Выполняет запрос к PostgreSQL через функцию
      */
