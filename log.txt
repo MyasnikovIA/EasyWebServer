@@ -442,3 +442,157 @@ Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
 
 
 ------------------------------------
+------------------------------------
+10:15:53 23/02/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Example/dataset_postgre_function.html
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
+
+
+------------------------------------
+------------------------------------
+10:16:07 23/02/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Example/dataset_postgre_function.html
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
+
+
+------------------------------------
+------------------------------------
+10:16:26 23/02/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Example/dataset_postgre_function.html
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
+
+
+------------------------------------
+------------------------------------
+10:17:58 23/02/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Example/dataset_postgre_function.html
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
+
+
+------------------------------------
+------------------------------------
+10:21:41 23/02/2026 (NSO +7)
+query.requestPath favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Example/dataset_postgre_function.html
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
+
+
+------------------------------------
+------------------------------------
+10:36:52 23/02/2026 (NSO +7)
+query.requestPath /favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/%7Bcomponent%7D/session?action=getAll
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
+
+
+------------------------------------
+------------------------------------
+10:37:06 23/02/2026 (NSO +7)
+query.requestPath /favicon.ico
+query.requestParam {}
+GET /favicon.ico HTTP/1.1
+Host: 127.0.0.1:9092
+Connection: keep-alive
+sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"
+sec-ch-ua-mobile: ?0
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36
+sec-ch-ua-platform: "Windows"
+Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: no-cors
+Sec-Fetch-Dest: image
+Referer: http://127.0.0.1:9092/Example/dataset_postgre_function.html
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7
+Cookie: session=e6ca297e-0cea-480f-861c-f1ad92ae1570
+
+
+------------------------------------

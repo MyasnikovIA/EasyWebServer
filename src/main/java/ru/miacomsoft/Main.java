@@ -33,7 +33,7 @@ public class Main {
         web.config("DEFAULT_HOST" , "0.0.0.0");
         web.config("DEFAULT_PORT" , "9092"); //  порт на котором будет работать сервер
         web.config("APP_NAME" , "webpage"); //  Имя приложения (функции на SQL сервер будут иметь префикс этого имени)
-        web.config("LOG_FILE" , "log.txt"); // путь к файлу логирования
+        //web.config("LOG_FILE" , "log.txt"); // путь к файлу логирования
         try {
             URL location = Main.class.getProtectionDomain().getCodeSource().getLocation();
             File file = new File(location.toURI());
