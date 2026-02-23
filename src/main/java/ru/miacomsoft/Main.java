@@ -19,8 +19,7 @@ public class Main {
         web.config("DATABASES.auth", "pdo://postgres:jyf0lehf7@localhost:5432/auth?currentSchema=auth&type=pgsql");
         web.config("DATABASES.settings", "pdo://postgres:jyf0lehf7@localhost:5432/mis?currentSchema=settings&type=pgsql");
         web.config("DATABASES.org", "pdo://postgres:jyf0lehf7@localhost:5432/mis?currentSchema=org&type=pgsql");
-        // web.config("DATABASES.oracle_test", "oci8://dev:def@192.168.241.141:1521/med2dev:pooled");
-        web.config("DATABASES.oracle_test", "oci8://dev:def@192.168.228.41:1521/med2dev");
+        web.config("DATABASES.oracle_test", "oci8://dev:def@192.168.241.141:1521/med2dev:pooled");
 
         web.config("LOGIN_PAGE" , "login.html");
         web.config("PAGE_404" , "page_404.html");

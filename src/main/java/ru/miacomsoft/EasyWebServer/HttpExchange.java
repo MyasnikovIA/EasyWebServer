@@ -384,7 +384,7 @@ public class HttpExchange {
      */
     public JSONArray SQL(String sql, String dbName) {
         JSONArray result = new JSONArray();
-        java.sql.Connection conn = null;
+        Connection conn = null;
          DatabaseConfig dbConfig = getDatabaseConfig(dbName);
         try {
             // Проверяем наличие сессии и DATABASE
@@ -476,12 +476,12 @@ public class HttpExchange {
     /**
      * Получает подключение к БД (с кэшированием)
      */
-    private java.sql.Connection getDatabaseConnection(DatabaseConfig dbConfig) {
+    private Connection getDatabaseConnection(DatabaseConfig dbConfig) {
         if (dbConfig == null) return null;
 
         try {
             // Проверяем кэшированное подключение
-            java.sql.Connection conn = (java.sql.Connection) dbConfig.getConnection();
+            Connection conn = (Connection) dbConfig.getConnection();
             if (conn != null && !conn.isClosed()) {
                 return conn;
             }
@@ -489,17 +489,17 @@ public class HttpExchange {
             // Создаем новое подключение
             Class.forName(dbConfig.getDriver());
 
-            java.sql.Connection newConn;
+            Connection newConn;
             if ("oci8".equals(dbConfig.getType())) {
                 // Oracle подключение
-                newConn = java.sql.DriverManager.getConnection(
+                newConn = DriverManager.getConnection(
                         dbConfig.getJdbcUrl(),
                         dbConfig.getUsername(),
                         dbConfig.getPassword()
                 );
             } else {
                 // PostgreSQL подключение
-                newConn = java.sql.DriverManager.getConnection(
+                newConn = DriverManager.getConnection(
                         dbConfig.getJdbcUrl(),
                         dbConfig.getUsername(),
                         dbConfig.getPassword()
@@ -551,7 +551,7 @@ public class HttpExchange {
     /**
      * Создает схему, если она не существует
      */
-    private boolean createSchemaIfNotExists(java.sql.Connection conn, String schemaName, DatabaseConfig dbConfig) {
+    private boolean createSchemaIfNotExists(Connection conn, String schemaName, DatabaseConfig dbConfig) {
         if (conn == null || schemaName == null || schemaName.isEmpty()) {
             return false;
         }
@@ -595,7 +595,7 @@ public class HttpExchange {
     /**
      * Проверяет существование схемы в SQL запросе
      */
-    private void ensureSchemaExists(java.sql.Connection conn, String sql, DatabaseConfig dbConfig) {
+    private void ensureSchemaExists(Connection conn, String sql, DatabaseConfig dbConfig) {
         if (conn == null || sql == null || sql.isEmpty()) {
             return;
         }

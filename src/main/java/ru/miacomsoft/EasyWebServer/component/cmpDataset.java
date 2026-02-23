@@ -358,7 +358,7 @@ public class cmpDataset extends Base {
             debugMode = (boolean) query.session.get("debug_mode");
         }
 
-        if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(dataset_name)) {
+        if (ServerResourceHandler.javaStrExecut.existJavaFunction(dataset_name)) {
             // Обработка Java функции
             try {
                 JSONObject varFun = new JSONObject();
@@ -386,7 +386,7 @@ public class cmpDataset extends Base {
                 }
 
                 JSONArray dataRes = new JSONArray();
-                JSONObject resFun = ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.runFunction(dataset_name, varFun, session, dataRes);
+                JSONObject resFun = ServerResourceHandler.javaStrExecut.runFunction(dataset_name, varFun, session, dataRes);
 
                 if (resFun.has("JAVA_ERROR")) {
                     result.put("ERROR", resFun.get("JAVA_ERROR"));

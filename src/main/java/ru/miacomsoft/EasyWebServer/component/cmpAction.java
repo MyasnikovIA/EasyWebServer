@@ -167,7 +167,7 @@ public class cmpAction extends Base {
         if (element.hasText()) {
             if (query_type.equals("java")) {
                 JSONObject infoCompile = new JSONObject();
-                if (!ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse, element.text().trim(), infoCompile)) {
+                if (!ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse, element.text().trim(), infoCompile)) {
                     this.removeAttr("style");
                     this.html(ru.miacomsoft.EasyWebServer.JavaStrExecut.parseErrorCompile(infoCompile));
                     return;
@@ -390,7 +390,7 @@ public class cmpAction extends Base {
             debugMode = (boolean) query.session.get("debug_mode");
         }
 
-        if (ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.existJavaFunction(fullActionName)) {
+        if (ServerResourceHandler.javaStrExecut.existJavaFunction(fullActionName)) {
             // Обработка Java функции
             executeJavaAction(query, result, fullActionName, vars, session);
         } else if (query_type.equals("sql")) {
@@ -442,7 +442,7 @@ public class cmpAction extends Base {
             System.out.println("Calling Java function with vars: " + varFun.toString());
 
             // Вызываем Java функцию
-            JSONObject resFun = ru.miacomsoft.EasyWebServer.ServerResourceHandler.javaStrExecut.runFunction(fullActionName, varFun, session, null);
+            JSONObject resFun = ServerResourceHandler.javaStrExecut.runFunction(fullActionName, varFun, session, null);
 
             System.out.println("Java function result: " + resFun.toString());
 
@@ -700,7 +700,7 @@ public class cmpAction extends Base {
                     cs.setDate(index, java.sql.Date.valueOf(value));
                     break;
                 case "timestamp":
-                    cs.setTimestamp(index, java.sql.Timestamp.valueOf(value.replace("T", " ")));
+                    cs.setTimestamp(index, Timestamp.valueOf(value.replace("T", " ")));
                     break;
                 case "json":
                 case "jsonb":
@@ -755,7 +755,7 @@ public class cmpAction extends Base {
                     java.sql.Date dateVal = cs.getDate(index);
                     return dateVal == null ? "" : dateVal.toString();
                 case "timestamp":
-                    java.sql.Timestamp tsVal = cs.getTimestamp(index);
+                    Timestamp tsVal = cs.getTimestamp(index);
                     return tsVal == null ? "" : tsVal.toString();
                 case "json":
                 case "jsonb":
@@ -999,7 +999,7 @@ public class cmpAction extends Base {
                             if (valueStr.isEmpty()) {
                                 cs.setNull(ind, Types.TIMESTAMP);
                             } else {
-                                cs.setTimestamp(ind, java.sql.Timestamp.valueOf(valueStr.replace("T", " ")));
+                                cs.setTimestamp(ind, Timestamp.valueOf(valueStr.replace("T", " ")));
                             }
                             break;
                         case "json":
@@ -1081,7 +1081,7 @@ public class cmpAction extends Base {
                             outParam = dateVal == null ? "" : dateVal.toString();
                             break;
                         case "timestamp":
-                            java.sql.Timestamp timestampVal = cs.getTimestamp(ind);
+                            Timestamp timestampVal = cs.getTimestamp(ind);
                             outParam = timestampVal == null ? "" : timestampVal.toString();
                             break;
                         case "json":
