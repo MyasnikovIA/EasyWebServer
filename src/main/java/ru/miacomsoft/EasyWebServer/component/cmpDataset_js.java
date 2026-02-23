@@ -2,314 +2,306 @@ package ru.miacomsoft.EasyWebServer.component;
 
 import ru.miacomsoft.EasyWebServer.HttpExchange;
 
-/**
- * JavaScript библиотека для компонента cmpDataset
- * Подключается автоматически при наличии cmpDataset на странице
- * Использует новый механизм хранения данных D3Api
- */
 public class cmpDataset_js {
-
     public static byte[] onPage(HttpExchange query) {
         query.mimeType = "application/javascript";
-
-        StringBuffer sb = new StringBuffer();
-        sb.append("/**\n");
-        sb.append(" * JavaScript библиотека для компонента cmpDataset\n");
-        sb.append(" * Предоставляет методы для работы с датасетами на клиенте\n");
-        sb.append(" * Использует новый механизм хранения данных D3Api\n");
-        sb.append(" */\n");
-        sb.append("(function() {\n");
-        sb.append("    // Предотвращаем повторную инициализацию\n");
-        sb.append("    if (window.cmpDatasetInitialized) return;\n");
-        sb.append("    window.cmpDatasetInitialized = true;\n");
-        sb.append("\n");
-        sb.append("    console.log('cmpDataset: JavaScript library initialized');\n");
-        sb.append("\n");
-        sb.append("    /**\n");
-        sb.append("     * Расширение D3Api для работы с датасетами\n");
-        sb.append("     */\n");
-        sb.append("    if (typeof D3Api !== 'undefined') {\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Обновление датасета\n");
-        sb.append("         * @param {string} nameDataset - Имя датасета\n");
-        sb.append("         * @param {Function} callBack - Функция обратного вызова\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.refreshDataSet = function(nameDataset, callBack) {\n");
-        sb.append("            return refreshDataSet(nameDataset, callBack);\n");
-        sb.append("        };\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Получение данных датасета\n");
-        sb.append("         * @param {string} nameDataset - Имя датасета\n");
-        sb.append("         * @returns {Array} - Массив данных\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.getDatasetData = function(nameDataset) {\n");
-        sb.append("            if (this.GLOBAL_DATA_SET && this.GLOBAL_DATA_SET[nameDataset]) {\n");
-        sb.append("                return this.GLOBAL_DATA_SET[nameDataset].data || [];\n");
-        sb.append("            }\n");
-        sb.append("            return [];\n");
-        sb.append("        };\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Привязка датасета к элементу (например, для select)\n");
-        sb.append("         * @param {string} nameDataset - Имя датасета\n");
-        sb.append("         * @param {string} elementName - Имя элемента\n");
-        sb.append("         * @param {Object} options - Опции {valueField: 'id', textField: 'name'}\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.bindDatasetToElement = function(nameDataset, elementName, options) {\n");
-        sb.append("            var data = this.getDatasetData(nameDataset);\n");
-        sb.append("            var element = document.querySelector('[name=\"' + elementName + '\"]');\n");
-        sb.append("            if (!element) return false;\n");
-        sb.append("            \n");
-        sb.append("            options = options || { valueField: 'id', textField: 'name' };\n");
-        sb.append("            \n");
-        sb.append("            // Очищаем текущие опции\n");
-        sb.append("            while (element.firstChild) {\n");
-        sb.append("                element.removeChild(element.firstChild);\n");
-        sb.append("            }\n");
-        sb.append("            \n");
-        sb.append("            // Добавляем опцию по умолчанию\n");
-        sb.append("            var defaultOption = document.createElement('option');\n");
-        sb.append("            defaultOption.value = '';\n");
-        sb.append("            defaultOption.textContent = '-- Выберите --';\n");
-        sb.append("            element.appendChild(defaultOption);\n");
-        sb.append("            \n");
-        sb.append("            // Добавляем опции из датасета\n");
-        sb.append("            for (var i = 0; i < data.length; i++) {\n");
-        sb.append("                var item = data[i];\n");
-        sb.append("                var option = document.createElement('option');\n");
-        sb.append("                option.value = item[options.valueField] || '';\n");
-        sb.append("                option.textContent = item[options.textField] || '';\n");
-        sb.append("                element.appendChild(option);\n");
-        sb.append("            }\n");
-        sb.append("            \n");
-        sb.append("            return true;\n");
-        sb.append("        };\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Фильтрация данных датасета\n");
-        sb.append("         * @param {string} nameDataset - Имя датасета\n");
-        sb.append("         * @param {Function} filterFn - Функция фильтрации\n");
-        sb.append("         * @returns {Array} - Отфильтрованные данные\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.filterDataset = function(nameDataset, filterFn) {\n");
-        sb.append("            var data = this.getDatasetData(nameDataset);\n");
-        sb.append("            return data.filter(filterFn);\n");
-        sb.append("        };\n");
-        sb.append("    }\n");
-        sb.append("\n");
-        sb.append("    /**\n");
-        sb.append("     * Глобальная функция обновления датасета\n");
-        sb.append("     * @param {string} nameDataset - Имя датасета\n");
-        sb.append("     * @param {Function} callBack - Функция обратного вызова\n");
-        sb.append("     */\n");
-        sb.append("    window.refreshDataSet = function(nameDataset, callBack) {\n");
-        sb.append("        var ctrlObj = document.querySelector('[name=\"' + nameDataset + '\"]');\n");
-        sb.append("        if (!ctrlObj) {\n");
-        sb.append("            console.error('Dataset not found:', nameDataset);\n");
-        sb.append("            return;\n");
-        sb.append("        }\n");
-        sb.append("\n");
-        sb.append("        // Получаем строку с атрибутом vars\n");
-        sb.append("        var varsString = ctrlObj.getAttribute('vars');\n");
-        sb.append("        console.log('Raw vars string:', varsString);\n");
-        sb.append("\n");
-        sb.append("        var jsonVars;\n");
-        sb.append("\n");
-        sb.append("        function parseVarsString(str) {\n");
-        sb.append("            var result = {};\n");
-        sb.append("            str = str.trim();\n");
-        sb.append("            if (str.startsWith('{') && str.endsWith('}')) {\n");
-        sb.append("                str = str.substring(1, str.length - 1);\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            var pairs = [];\n");
-        sb.append("            var depth = 0;\n");
-        sb.append("            var current = '';\n");
-        sb.append("            var inString = false;\n");
-        sb.append("\n");
-        sb.append("            for (var i = 0; i < str.length; i++) {\n");
-        sb.append("                var c = str[i];\n");
-        sb.append("\n");
-        sb.append("                if (c === '{') depth++;\n");
-        sb.append("                else if (c === '}') depth--;\n");
-        sb.append("                else if (c === \"'\" && (i === 0 || str[i-1] !== '\\\\')) inString = !inString;\n");
-        sb.append("\n");
-        sb.append("                if (c === ',' && depth === 0 && !inString) {\n");
-        sb.append("                    pairs.push(current);\n");
-        sb.append("                    current = '';\n");
-        sb.append("                } else {\n");
-        sb.append("                    current += c;\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("            if (current.trim()) {\n");
-        sb.append("                pairs.push(current);\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            for (var p = 0; p < pairs.length; p++) {\n");
-        sb.append("                var pair = pairs[p];\n");
-        sb.append("                var colonIndex = pair.indexOf(':');\n");
-        sb.append("                if (colonIndex === -1) continue;\n");
-        sb.append("\n");
-        sb.append("                var key = pair.substring(0, colonIndex).trim().replace(/^'|'$/g, '');\n");
-        sb.append("                var valueStr = pair.substring(colonIndex + 1).trim();\n");
-        sb.append("\n");
-        sb.append("                if (valueStr.startsWith('{') && valueStr.endsWith('}')) {\n");
-        sb.append("                    var obj = {};\n");
-        sb.append("                    var innerStr = valueStr.substring(1, valueStr.length - 1);\n");
-        sb.append("                    var innerPairs = innerStr.split(',');\n");
-        sb.append("\n");
-        sb.append("                    for (var inner = 0; inner < innerPairs.length; inner++) {\n");
-        sb.append("                        var innerPair = innerPairs[inner];\n");
-        sb.append("                        var innerColon = innerPair.indexOf(':');\n");
-        sb.append("                        if (innerColon === -1) continue;\n");
-        sb.append("\n");
-        sb.append("                        var innerKey = innerPair.substring(0, innerColon).trim().replace(/^'|'$/g, '');\n");
-        sb.append("                        var innerValue = innerPair.substring(innerColon + 1).trim().replace(/^'|'$/g, '');\n");
-        sb.append("                        obj[innerKey] = innerValue;\n");
-        sb.append("                    }\n");
-        sb.append("                    result[key] = obj;\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("            return result;\n");
-        sb.append("        }\n");
-        sb.append("\n");
-        sb.append("        try {\n");
-        sb.append("            jsonVars = parseVarsString(varsString);\n");
-        sb.append("            console.log('Parsed vars:', jsonVars);\n");
-        sb.append("        } catch (e) {\n");
-        sb.append("            console.error('Failed to parse vars attribute:', e);\n");
-        sb.append("            return;\n");
-        sb.append("        }\n");
-        sb.append("\n");
-        sb.append("        var query_type = ctrlObj.getAttribute('query_type');\n");
-        sb.append("        var db = ctrlObj.getAttribute('db');\n");
-        sb.append("        var dataset_name = ctrlObj.getAttribute('dataset_name');\n");
-        sb.append("\n");
-        sb.append("        console.log('Dataset info:', {query_type, db, dataset_name});\n");
-        sb.append("\n");
-        sb.append("        // Формируем данные для отправки\n");
-        sb.append("        var requestData = {};\n");
-        sb.append("\n");
-        sb.append("        for (var key in jsonVars) {\n");
-        sb.append("            var varInfo = jsonVars[key];\n");
-        sb.append("            var value = '';\n");
-        sb.append("\n");
-        sb.append("            // Используем новый механизм D3Api для получения значений\n");
-        sb.append("            if (varInfo['srctype'] === 'var') {\n");
-        sb.append("                if (window.D3Api && D3Api.getVar) {\n");
-        sb.append("                    value = D3Api.getVar(varInfo['src']) || varInfo['defaultVal'] || '';\n");
-        sb.append("                } else {\n");
-        sb.append("                    value = window.getVar ? window.getVar(varInfo['src']) || varInfo['defaultVal'] || '' : '';\n");
-        sb.append("                }\n");
-        sb.append("            } else if (varInfo['srctype'] === 'ctrl') {\n");
-        sb.append("                if (window.D3Api && D3Api.getValue) {\n");
-        sb.append("                    value = D3Api.getValue(varInfo['src']) || varInfo['defaultVal'] || '';\n");
-        sb.append("                } else {\n");
-        sb.append("                    var ctrlElement = document.querySelector('[name=\"' + varInfo['src'] + '\"]');\n");
-        sb.append("                    value = ctrlElement ? ctrlElement.value : (varInfo['defaultVal'] || '');\n");
-        sb.append("                }\n");
-        sb.append("            } else if (varInfo['srctype'] === 'session') {\n");
-        sb.append("                if (window.D3Api && D3Api.getSession) {\n");
-        sb.append("                    value = D3Api.getSession(varInfo['src']) || varInfo['defaultVal'] || '';\n");
-        sb.append("                } else {\n");
-        sb.append("                    value = varInfo['defaultVal'] || '';\n");
-        sb.append("                }\n");
-        sb.append("            } else {\n");
-        sb.append("                value = varInfo['defaultVal'] || '';\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            requestData[key] = {\n");
-        sb.append("                'srctype': varInfo['srctype'],\n");
-        sb.append("                'src': varInfo['src'],\n");
-        sb.append("                'value': String(value),\n");
-        sb.append("                'defaultVal': varInfo['defaultVal'] || ''\n");
-        sb.append("            };\n");
-        sb.append("\n");
-        sb.append("            if (varInfo['len']) {\n");
-        sb.append("                requestData[key]['len'] = varInfo['len'];\n");
-        sb.append("            }\n");
-        sb.append("        }\n");
-        sb.append("\n");
-        sb.append("        console.log('Sending request data:', requestData);\n");
-        sb.append("\n");
-        sb.append("        fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {\n");
-        sb.append("            method: 'POST',\n");
-        sb.append("            headers: {\n");
-        sb.append("                'Content-Type': 'application/json'\n");
-        sb.append("            },\n");
-        sb.append("            body: JSON.stringify(requestData)\n");
-        sb.append("        })\n");
-        sb.append("        .then(function(response) {\n");
-        sb.append("            return response.json();\n");
-        sb.append("        })\n");
-        sb.append("        .then(function(dataObj) {\n");
-        sb.append("            console.log('Response received:', dataObj);\n");
-        sb.append("\n");
-        sb.append("            if (dataObj['redirect']) {\n");
-        sb.append("                if (window.saveDirect) {\n");
-        sb.append("                    window.saveDirect('loginDirect');\n");
-        sb.append("                }\n");
-        sb.append("                window.location.href = dataObj['redirect'];\n");
-        sb.append("                return;\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            // Обрабатываем выходные переменные через новый механизм D3Api\n");
-        sb.append("            if (dataObj['vars_out']) {\n");
-        sb.append("                var outVars = dataObj['vars_out'];\n");
-        sb.append("                for (var key in outVars) {\n");
-        sb.append("                    var varInfo = outVars[key];\n");
-        sb.append("                    var value = varInfo['value'];\n");
-        sb.append("\n");
-        sb.append("                    if (value === 'null') value = null;\n");
-        sb.append("                    else if (value === 'true') value = true;\n");
-        sb.append("                    else if (value === 'false') value = false;\n");
-        sb.append("\n");
-        sb.append("                    if (varInfo['srctype'] === 'var') {\n");
-        sb.append("                        if (window.D3Api && D3Api.setVar) {\n");
-        sb.append("                            D3Api.setVar(varInfo['src'], value);\n");
-        sb.append("                        } else if (window.setVar) {\n");
-        sb.append("                            window.setVar(varInfo['src'], value);\n");
-        sb.append("                        }\n");
-        sb.append("                    } else if (varInfo['srctype'] === 'ctrl') {\n");
-        sb.append("                        if (value === null) value = '';\n");
-        sb.append("                        if (window.D3Api && D3Api.setValue) {\n");
-        sb.append("                            D3Api.setValue(varInfo['src'], value);\n");
-        sb.append("                        } else {\n");
-        sb.append("                            var targetElement = document.querySelector('[name=\"' + varInfo['src'] + '\"]');\n");
-        sb.append("                            if (targetElement) targetElement.value = value;\n");
-        sb.append("                        }\n");
-        sb.append("                    } else if (varInfo['srctype'] === 'session') {\n");
-        sb.append("                        if (window.D3Api && D3Api.setSession) {\n");
-        sb.append("                            D3Api.setSession(varInfo['src'], value);\n");
-        sb.append("                        }\n");
-        sb.append("                    }\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            if (!window.D3Api || !D3Api.GLOBAL_DATA_SET) {\n");
-        sb.append("                window.D3Api = window.D3Api || {};\n");
-        sb.append("                D3Api.GLOBAL_DATA_SET = D3Api.GLOBAL_DATA_SET || {};\n");
-        sb.append("            }\n");
-        sb.append("            \n");
-        sb.append("            if (!D3Api.GLOBAL_DATA_SET[nameDataset]) {\n");
-        sb.append("                D3Api.GLOBAL_DATA_SET[nameDataset] = { data: [] };\n");
-        sb.append("            }\n");
-        sb.append("            D3Api.GLOBAL_DATA_SET[nameDataset].data = dataObj['data'] || [];\n");
-        sb.append("\n");
-        sb.append("            console.log('Dataset data:', dataObj['data']);\n");
-        sb.append("\n");
-        sb.append("            if (callBack && typeof callBack === 'function') {\n");
-        sb.append("                callBack(dataObj['data']);\n");
-        sb.append("            }\n");
-        sb.append("        })\n");
-        sb.append("        .catch(function(error) {\n");
-        sb.append("            console.error('Fetch error:', error);\n");
-        sb.append("        });\n");
-        sb.append("    };\n");
-        sb.append("})();\n");
-
-        return sb.toString().getBytes();
+        return """
+            /**
+             * JavaScript библиотека для компонента cmpDataset
+             * Предоставляет методы для работы с датасетами на клиенте
+             * Использует новый механизм хранения данных D3Api
+             */
+            (function() {
+                // Предотвращаем повторную инициализацию
+                if (window.cmpDatasetInitialized) return;
+                window.cmpDatasetInitialized = true;
+            
+                console.log('cmpDataset: JavaScript library initialized');
+            
+                /**
+                 * Расширение D3Api для работы с датасетами
+                 */
+                if (typeof D3Api !== 'undefined') {
+                    
+                    /**
+                     * Обновление датасета
+                     * @param {string} nameDataset - Имя датасета
+                     * @param {Function} callBack - Функция обратного вызова
+                     */
+                    D3Api.refreshDataSet = function(nameDataset, callBack) {
+                        return refreshDataSet(nameDataset, callBack);
+                    };
+                    
+                    /**
+                     * Получение данных датасета
+                     * @param {string} nameDataset - Имя датасета
+                     * @returns {Array} - Массив данных
+                     */
+                    D3Api.getDatasetData = function(nameDataset) {
+                        if (this.GLOBAL_DATA_SET && this.GLOBAL_DATA_SET[nameDataset]) {
+                            return this.GLOBAL_DATA_SET[nameDataset].data || [];
+                        }
+                        return [];
+                    };
+                    
+                    /**
+                     * Привязка датасета к элементу (например, для select)
+                     * @param {string} nameDataset - Имя датасета
+                     * @param {string} elementName - Имя элемента
+                     * @param {Object} options - Опции {valueField: 'id', textField: 'name'}
+                     */
+                    D3Api.bindDatasetToElement = function(nameDataset, elementName, options) {
+                        var data = this.getDatasetData(nameDataset);
+                        var element = document.querySelector('[name="' + elementName + '"]');
+                        if (!element) return false;
+                        
+                        options = options || { valueField: 'id', textField: 'name' };
+                        
+                        // Очищаем текущие опции
+                        while (element.firstChild) {
+                            element.removeChild(element.firstChild);
+                        }
+                        
+                        // Добавляем опцию по умолчанию
+                        var defaultOption = document.createElement('option');
+                        defaultOption.value = '';
+                        defaultOption.textContent = '-- Выберите --';
+                        element.appendChild(defaultOption);
+                        
+                        // Добавляем опции из датасета
+                        for (var i = 0; i < data.length; i++) {
+                            var item = data[i];
+                            var option = document.createElement('option');
+                            option.value = item[options.valueField] || '';
+                            option.textContent = item[options.textField] || '';
+                            element.appendChild(option);
+                        }
+                        
+                        return true;
+                    };
+                    
+                    /**
+                     * Фильтрация данных датасета
+                     * @param {string} nameDataset - Имя датасета
+                     * @param {Function} filterFn - Функция фильтрации
+                     * @returns {Array} - Отфильтрованные данные
+                     */
+                    D3Api.filterDataset = function(nameDataset, filterFn) {
+                        var data = this.getDatasetData(nameDataset);
+                        return data.filter(filterFn);
+                    };
+                }
+            
+                /**
+                 * Глобальная функция обновления датасета
+                 * @param {string} nameDataset - Имя датасета
+                 * @param {Function} callBack - Функция обратного вызова
+                 */
+                window.refreshDataSet = function(nameDataset, callBack) {
+                    var ctrlObj = document.querySelector('[name="' + nameDataset + '"]');
+                    if (!ctrlObj) {
+                        console.error('Dataset not found:', nameDataset);
+                        return;
+                    }
+            
+                    // Получаем строку с атрибутом vars
+                    var varsString = ctrlObj.getAttribute('vars');
+                    console.log('Raw vars string:', varsString);
+            
+                    var jsonVars;
+            
+                    function parseVarsString(str) {
+                        var result = {};
+                        str = str.trim();
+                        if (str.startsWith('{') && str.endsWith('}')) {
+                            str = str.substring(1, str.length - 1);
+                        }
+            
+                        var pairs = [];
+                        var depth = 0;
+                        var current = '';
+                        var inString = false;
+            
+                        for (var i = 0; i < str.length; i++) {
+                            var c = str[i];
+            
+                            if (c === '{') depth++;
+                            else if (c === '}') depth--;
+                            else if (c === "'" && (i === 0 || str[i-1] !== '\\\\')) inString = !inString;
+            
+                            if (c === ',' && depth === 0 && !inString) {
+                                pairs.push(current);
+                                current = '';
+                            } else {
+                                current += c;
+                            }
+                        }
+                        if (current.trim()) {
+                            pairs.push(current);
+                        }
+            
+                        for (var p = 0; p < pairs.length; p++) {
+                            var pair = pairs[p];
+                            var colonIndex = pair.indexOf(':');
+                            if (colonIndex === -1) continue;
+            
+                            var key = pair.substring(0, colonIndex).trim().replace(/^'|'$/g, '');
+                            var valueStr = pair.substring(colonIndex + 1).trim();
+            
+                            if (valueStr.startsWith('{') && valueStr.endsWith('}')) {
+                                var obj = {};
+                                var innerStr = valueStr.substring(1, valueStr.length - 1);
+                                var innerPairs = innerStr.split(',');
+            
+                                for (var inner = 0; inner < innerPairs.length; inner++) {
+                                    var innerPair = innerPairs[inner];
+                                    var innerColon = innerPair.indexOf(':');
+                                    if (innerColon === -1) continue;
+            
+                                    var innerKey = innerPair.substring(0, innerColon).trim().replace(/^'|'$/g, '');
+                                    var innerValue = innerPair.substring(innerColon + 1).trim().replace(/^'|'$/g, '');
+                                    obj[innerKey] = innerValue;
+                                }
+                                result[key] = obj;
+                            }
+                        }
+                        return result;
+                    }
+            
+                    try {
+                        jsonVars = parseVarsString(varsString);
+                        console.log('Parsed vars:', jsonVars);
+                    } catch (e) {
+                        console.error('Failed to parse vars attribute:', e);
+                        return;
+                    }
+            
+                    var query_type = ctrlObj.getAttribute('query_type');
+                    var db = ctrlObj.getAttribute('db');
+                    var dataset_name = ctrlObj.getAttribute('dataset_name');
+            
+                    console.log('Dataset info:', {query_type, db, dataset_name});
+            
+                    // Формируем данные для отправки
+                    var requestData = {};
+            
+                    for (var key in jsonVars) {
+                        var varInfo = jsonVars[key];
+                        var value = '';
+            
+                        // Используем новый механизм D3Api для получения значений
+                        if (varInfo['srctype'] === 'var') {
+                            if (window.D3Api && D3Api.getVar) {
+                                value = D3Api.getVar(varInfo['src']) || varInfo['defaultVal'] || '';
+                            } else {
+                                value = window.getVar ? window.getVar(varInfo['src']) || varInfo['defaultVal'] || '' : '';
+                            }
+                        } else if (varInfo['srctype'] === 'ctrl') {
+                            if (window.D3Api && D3Api.getValue) {
+                                value = D3Api.getValue(varInfo['src']) || varInfo['defaultVal'] || '';
+                            } else {
+                                var ctrlElement = document.querySelector('[name="' + varInfo['src'] + '"]');
+                                value = ctrlElement ? ctrlElement.value : (varInfo['defaultVal'] || '');
+                            }
+                        } else if (varInfo['srctype'] === 'session') {
+                            if (window.D3Api && D3Api.getSession) {
+                                value = D3Api.getSession(varInfo['src']) || varInfo['defaultVal'] || '';
+                            } else {
+                                value = varInfo['defaultVal'] || '';
+                            }
+                        } else {
+                            value = varInfo['defaultVal'] || '';
+                        }
+            
+                        requestData[key] = {
+                            'srctype': varInfo['srctype'],
+                            'src': varInfo['src'],
+                            'value': String(value),
+                            'defaultVal': varInfo['defaultVal'] || ''
+                        };
+            
+                        if (varInfo['len']) {
+                            requestData[key]['len'] = varInfo['len'];
+                        }
+                    }
+            
+                    console.log('Sending request data:', requestData);
+            
+                    fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestData)
+                    })
+                    .then(function(response) {
+                        return response.json();
+                    })
+                    .then(function(dataObj) {
+                        console.log('Response received:', dataObj);
+            
+                        if (dataObj['redirect']) {
+                            if (window.saveDirect) {
+                                window.saveDirect('loginDirect');
+                            }
+                            window.location.href = dataObj['redirect'];
+                            return;
+                        }
+            
+                        // Обрабатываем выходные переменные через новый механизм D3Api
+                        if (dataObj['vars_out']) {
+                            var outVars = dataObj['vars_out'];
+                            for (var key in outVars) {
+                                var varInfo = outVars[key];
+                                var value = varInfo['value'];
+            
+                                if (value === 'null') value = null;
+                                else if (value === 'true') value = true;
+                                else if (value === 'false') value = false;
+            
+                                if (varInfo['srctype'] === 'var') {
+                                    if (window.D3Api && D3Api.setVar) {
+                                        D3Api.setVar(varInfo['src'], value);
+                                    } else if (window.setVar) {
+                                        window.setVar(varInfo['src'], value);
+                                    }
+                                } else if (varInfo['srctype'] === 'ctrl') {
+                                    if (value === null) value = '';
+                                    if (window.D3Api && D3Api.setValue) {
+                                        D3Api.setValue(varInfo['src'], value);
+                                    } else {
+                                        var targetElement = document.querySelector('[name="' + varInfo['src'] + '"]');
+                                        if (targetElement) targetElement.value = value;
+                                    }
+                                } else if (varInfo['srctype'] === 'session') {
+                                    if (window.D3Api && D3Api.setSession) {
+                                        D3Api.setSession(varInfo['src'], value);
+                                    }
+                                }
+                            }
+                        }
+            
+                        if (!window.D3Api || !D3Api.GLOBAL_DATA_SET) {
+                            window.D3Api = window.D3Api || {};
+                            D3Api.GLOBAL_DATA_SET = D3Api.GLOBAL_DATA_SET || {};
+                        }
+                        
+                        if (!D3Api.GLOBAL_DATA_SET[nameDataset]) {
+                            D3Api.GLOBAL_DATA_SET[nameDataset] = { data: [] };
+                        }
+                        D3Api.GLOBAL_DATA_SET[nameDataset].data = dataObj['data'] || [];
+            
+                        console.log('Dataset data:', dataObj['data']);
+            
+                        if (callBack && typeof callBack === 'function') {
+                            callBack(dataObj['data']);
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('Fetch error:', error);
+                    });
+                };
+            })();
+            """.getBytes();
     }
 }

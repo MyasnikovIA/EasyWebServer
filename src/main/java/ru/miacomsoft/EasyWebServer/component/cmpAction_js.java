@@ -2,367 +2,359 @@ package ru.miacomsoft.EasyWebServer.component;
 
 import ru.miacomsoft.EasyWebServer.HttpExchange;
 
-/**
- * JavaScript библиотека для компонента cmpAction
- * Подключается автоматически при наличии cmpAction на странице
- * Использует новый механизм хранения данных D3Api
- */
 public class cmpAction_js {
-
     public static byte[] onPage(HttpExchange query) {
         query.mimeType = "application/javascript";
-
-        StringBuffer sb = new StringBuffer();
-        sb.append("/**\n");
-        sb.append(" * JavaScript библиотека для компонента cmpAction\n");
-        sb.append(" * Предоставляет методы для работы с действиями на клиенте\n");
-        sb.append(" * Использует новый механизм хранения данных D3Api\n");
-        sb.append(" */\n");
-        sb.append("(function() {\n");
-        sb.append("    // Предотвращаем повторную инициализацию\n");
-        sb.append("    if (window.cmpActionInitialized) return;\n");
-        sb.append("    window.cmpActionInitialized = true;\n");
-        sb.append("\n");
-        sb.append("    console.log('cmpAction: JavaScript library initialized');\n");
-        sb.append("\n");
-        sb.append("    /**\n");
-        sb.append("     * Расширение D3Api для работы с действиями\n");
-        sb.append("     */\n");
-        sb.append("    if (typeof D3Api !== 'undefined') {\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Установка автоматического действия\n");
-        sb.append("         * @param {string} name - Имя действия\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.setActionAuto = function(name) {\n");
-        sb.append("            if (!this.GLOBAL_ACTION) this.GLOBAL_ACTION = {};\n");
-        sb.append("            this.GLOBAL_ACTION[name] = {};\n");
-        sb.append("        };\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Выполнение действия\n");
-        sb.append("         * @param {string} nameAction - Имя действия\n");
-        sb.append("         * @param {Function} callBack - Функция обратного вызова\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.executeAction = function(nameAction, callBack) {\n");
-        sb.append("            return executeAction(nameAction, callBack);\n");
-        sb.append("        };\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Получение результата действия\n");
-        sb.append("         * @param {string} nameAction - Имя действия\n");
-        sb.append("         * @returns {Object} - Результат действия\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.getActionResult = function(nameAction) {\n");
-        sb.append("            if (this.GLOBAL_ACTION && this.GLOBAL_ACTION[nameAction]) {\n");
-        sb.append("                return this.GLOBAL_ACTION[nameAction];\n");
-        sb.append("            }\n");
-        sb.append("            return null;\n");
-        sb.append("        };\n");
-        sb.append("    }\n");
-        sb.append("\n");
-        sb.append("    /**\n");
-        sb.append("     * Инициализация всех действий на странице\n");
-        sb.append("     */\n");
-        sb.append("    function initActions() {\n");
-        sb.append("        var actionElements = document.querySelectorAll('[schema=\"Action\"]');\n");
-        sb.append("        for (var i = 0; i < actionElements.length; i++) {\n");
-        sb.append("            var actionEl = actionElements[i];\n");
-        sb.append("            var name = actionEl.getAttribute('name');\n");
-        sb.append("            if (name && window.D3Api) {\n");
-        sb.append("                D3Api.setActionAuto(name);\n");
-        sb.append("                console.log('cmpAction: Auto-initialized action:', name);\n");
-        sb.append("            }\n");
-        sb.append("        }\n");
-        sb.append("    }\n");
-        sb.append("\n");
-        sb.append("    /**\n");
-        sb.append("     * Глобальная функция выполнения действия\n");
-        sb.append("     * @param {string} nameAction - Имя действия\n");
-        sb.append("     * @param {Function} callBack - Функция обратного вызова\n");
-        sb.append("     */\n");
-        sb.append("    window.executeAction = function(nameAction, callBack) {\n");
-        sb.append("        var ctrlObj = document.querySelector('[name=\"' + nameAction + '\"]');\n");
-        sb.append("        if (!ctrlObj) {\n");
-        sb.append("            console.error('Action not found:', nameAction);\n");
-        sb.append("            return;\n");
-        sb.append("        }\n");
-        sb.append("\n");
-        sb.append("        // Получаем атрибуты\n");
-        sb.append("        var varsString = ctrlObj.getAttribute('vars');\n");
-        sb.append("        console.log('Raw vars string:', varsString);\n");
-        sb.append("\n");
-        sb.append("        // Парсим vars\n");
-        sb.append("        var jsonVars = {};\n");
-        sb.append("\n");
-        sb.append("        try {\n");
-        sb.append("            var fixedString = varsString\n");
-        sb.append("                .replace(/'/g, '\"')\n");
-        sb.append("                .replace(/(\\w+):/g, '\"$1\":')\n");
-        sb.append("                .replace(/,\\s*}/g, '}');\n");
-        sb.append("\n");
-        sb.append("            console.log('Fixed string:', fixedString);\n");
-        sb.append("            jsonVars = JSON.parse(fixedString);\n");
-        sb.append("        } catch (e) {\n");
-        sb.append("            console.log('JSON parse failed, trying manual parse:', e);\n");
-        sb.append("\n");
-        sb.append("            try {\n");
-        sb.append("                var cleanStr = varsString.trim();\n");
-        sb.append("                if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {\n");
-        sb.append("                    cleanStr = cleanStr.substring(1, cleanStr.length - 1);\n");
-        sb.append("                }\n");
-        sb.append("\n");
-        sb.append("                var pairs = [];\n");
-        sb.append("                var depth = 0;\n");
-        sb.append("                var current = '';\n");
-        sb.append("\n");
-        sb.append("                for (var i = 0; i < cleanStr.length; i++) {\n");
-        sb.append("                    var c = cleanStr[i];\n");
-        sb.append("\n");
-        sb.append("                    if (c === '{') depth++;\n");
-        sb.append("                    else if (c === '}') depth--;\n");
-        sb.append("\n");
-        sb.append("                    if (c === ',' && depth === 0) {\n");
-        sb.append("                        pairs.push(current);\n");
-        sb.append("                        current = '';\n");
-        sb.append("                    } else {\n");
-        sb.append("                        current += c;\n");
-        sb.append("                    }\n");
-        sb.append("                }\n");
-        sb.append("                if (current.trim()) {\n");
-        sb.append("                    pairs.push(current);\n");
-        sb.append("                }\n");
-        sb.append("\n");
-        sb.append("                for (var p = 0; p < pairs.length; p++) {\n");
-        sb.append("                    var pair = pairs[p];\n");
-        sb.append("                    var colonIndex = pair.indexOf(':');\n");
-        sb.append("                    if (colonIndex === -1) continue;\n");
-        sb.append("\n");
-        sb.append("                    var key = pair.substring(0, colonIndex).trim().replace(/['\"]/g, '');\n");
-        sb.append("                    var valueStr = pair.substring(colonIndex + 1).trim();\n");
-        sb.append("\n");
-        sb.append("                    if (valueStr.startsWith('{') && valueStr.endsWith('}')) {\n");
-        sb.append("                        var obj = {};\n");
-        sb.append("                        var innerStr = valueStr.substring(1, valueStr.length - 1);\n");
-        sb.append("                        var innerPairs = innerStr.split(',');\n");
-        sb.append("\n");
-        sb.append("                        for (var inner = 0; inner < innerPairs.length; inner++) {\n");
-        sb.append("                            var innerPair = innerPairs[inner];\n");
-        sb.append("                            var innerColon = innerPair.indexOf(':');\n");
-        sb.append("                            if (innerColon === -1) continue;\n");
-        sb.append("\n");
-        sb.append("                            var innerKey = innerPair.substring(0, innerColon).trim().replace(/['\"]/g, '');\n");
-        sb.append("                            var innerValue = innerPair.substring(innerColon + 1).trim().replace(/['\"]/g, '');\n");
-        sb.append("                            obj[innerKey] = innerValue;\n");
-        sb.append("                        }\n");
-        sb.append("                        jsonVars[key] = obj;\n");
-        sb.append("                    }\n");
-        sb.append("                }\n");
-        sb.append("\n");
-        sb.append("                console.log('Manually parsed vars:', jsonVars);\n");
-        sb.append("            } catch (e2) {\n");
-        sb.append("                console.error('Manual parse failed:', e2);\n");
-        sb.append("            }\n");
-        sb.append("        }\n");
-        sb.append("\n");
-        sb.append("        var query_type = ctrlObj.getAttribute('query_type') || 'java';\n");
-        sb.append("        var action_name = ctrlObj.getAttribute('action_name');\n");
-        sb.append("\n");
-        sb.append("        console.log('Action info:', {query_type, action_name});\n");
-        sb.append("        console.log('Parsed vars:', jsonVars);\n");
-        sb.append("\n");
-        sb.append("        // Формируем данные для отправки\n");
-        sb.append("        var requestData = {};\n");
-        sb.append("\n");
-        sb.append("        for (var key in jsonVars) {\n");
-        sb.append("            var varInfo = jsonVars[key];\n");
-        sb.append("            if (!varInfo) continue;\n");
-        sb.append("\n");
-        sb.append("            var value = '';\n");
-        sb.append("            var src = varInfo.src || key;\n");
-        sb.append("            var srctype = varInfo.srctype || 'var';\n");
-        sb.append("            var defaultVal = varInfo.defaultVal || '';\n");
-        sb.append("            var len = varInfo.len || '';\n");
-        sb.append("\n");
-        sb.append("            // Используем новый механизм D3Api для получения значений\n");
-        sb.append("            if (srctype === 'var') {\n");
-        sb.append("                if (window.D3Api && D3Api.getVar) {\n");
-        sb.append("                    value = D3Api.getVar(src) || defaultVal;\n");
-        sb.append("                } else {\n");
-        sb.append("                    value = window.getVar ? window.getVar(src) || defaultVal : defaultVal;\n");
-        sb.append("                }\n");
-        sb.append("            } else if (srctype === 'ctrl') {\n");
-        sb.append("                if (window.D3Api && D3Api.getValue) {\n");
-        sb.append("                    value = D3Api.getValue(src) || defaultVal;\n");
-        sb.append("                } else {\n");
-        sb.append("                    var ctrlElement = document.querySelector('[name=\"' + src + '\"]');\n");
-        sb.append("                    value = ctrlElement ? ctrlElement.value : defaultVal;\n");
-        sb.append("                }\n");
-        sb.append("            } else if (srctype === 'session') {\n");
-        sb.append("                if (window.D3Api && D3Api.getSession) {\n");
-        sb.append("                    value = D3Api.getSession(src) || defaultVal;\n");
-        sb.append("                } else {\n");
-        sb.append("                    value = defaultVal;\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            requestData[key] = {\n");
-        sb.append("                'srctype': srctype,\n");
-        sb.append("                'src': src,\n");
-        sb.append("                'value': String(value),\n");
-        sb.append("                'defaultVal': defaultVal\n");
-        sb.append("            };\n");
-        sb.append("\n");
-        sb.append("            if (len) {\n");
-        sb.append("                requestData[key].len = len;\n");
-        sb.append("            }\n");
-        sb.append("        }\n");
-        sb.append("\n");
-        sb.append("        console.log('Sending request data:', requestData);\n");
-        sb.append("        console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public');\n");
-        sb.append("\n");
-        sb.append("        fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {\n\n");
-        sb.append("            method: 'POST',\n");
-        sb.append("            headers: {\n");
-        sb.append("                'Content-Type': 'application/json'\n");
-        sb.append("            },\n");
-        sb.append("            body: JSON.stringify(requestData)\n");
-        sb.append("        })\n");
-        sb.append("        .then(function(response) {\n");
-        sb.append("            return response.json();\n");
-        sb.append("        })\n");
-        sb.append("        .then(function(dataObj) {\n");
-        sb.append("            console.log('Response received:', dataObj);\n");
-        sb.append("\n");
-        sb.append("            if (dataObj.redirect) {\n");
-        sb.append("                if (window.saveDirect) {\n");
-        sb.append("                    window.saveDirect('loginDirect');\n");
-        sb.append("                }\n");
-        sb.append("                window.location.href = dataObj.redirect;\n");
-        sb.append("                return;\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            // Улучшенная обработка ошибок\n");
-        sb.append("            if (dataObj.ERROR) {\n");
-        sb.append("                console.error('Action error:', dataObj.ERROR);\n");
-        sb.append("                \n");
-        sb.append("                // Если есть детальная информация об ошибке, показываем её\n");
-        sb.append("                if (typeof dataObj.ERROR === 'object') {\n");
-        sb.append("                    var errorMsg = dataObj.ERROR.message || 'Unknown error';\n");
-        sb.append("                    var errorHint = dataObj.ERROR.hint || '';\n");
-        sb.append("                    var fieldValue = dataObj.ERROR.field_value || '';\n");
-        sb.append("                    \n");
-        sb.append("                    // Формируем сообщение для пользователя\n");
-        sb.append("                    var userMessage = 'Ошибка выполнения действия: ' + errorMsg;\n");
-        sb.append("                    if (errorHint) {\n");
-        sb.append("                        userMessage += '\\n' + errorHint;\n");
-        sb.append("                    }\n");
-        sb.append("                    if (fieldValue) {\n");
-        sb.append("                        userMessage += '\\nЗначение поля: \"' + fieldValue + '\"';\n");
-        sb.append("                    }\n");
-        sb.append("                    \n");
-        sb.append("                    // Показываем сообщение пользователю\n");
-        sb.append("                    if (window.D3Api && D3Api.msgbox) {\n");
-        sb.append("                        D3Api.msgbox(userMessage, 'OK');\n");
-        sb.append("                    } else {\n");
-        sb.append("                        alert(userMessage);\n");
-        sb.append("                    }\n");
-        sb.append("                } else {\n");
-        sb.append("                    // Простая ошибка в виде строки\n");
-        sb.append("                    var errorStr = String(dataObj.ERROR);\n");
-        sb.append("                    if (window.D3Api && D3Api.msgbox) {\n");
-        sb.append("                        D3Api.msgbox('Ошибка: ' + errorStr, 'OK');\n");
-        sb.append("                    } else {\n");
-        sb.append("                        alert('Ошибка: ' + errorStr);\n");
-        sb.append("                    }\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            // Обрабатываем выходные переменные через новый механизм D3Api\n");
-        sb.append("            if (dataObj.vars) {\n");
-        sb.append("                var data = dataObj.vars;\n");
-        sb.append("                for (var key in data) {\n");
-        sb.append("                    var varInfo = data[key];\n");
-        sb.append("                    if (typeof varInfo === 'object') {\n");
-        sb.append("                        var value = varInfo.value;\n");
-        sb.append("                        var srctype = varInfo.srctype || 'var';\n");
-        sb.append("                        var src = varInfo.src || key;\n");
-        sb.append("\n");
-        sb.append("                        if (value === 'null') value = null;\n");
-        sb.append("                        else if (value === 'true') value = true;\n");
-        sb.append("                        else if (value === 'false') value = false;\n");
-        sb.append("\n");
-        sb.append("                        console.log('Setting output:', {key, srctype, src, value});\n");
-        sb.append("\n");
-        sb.append("                        if (srctype === 'var') {\n");
-        sb.append("                            if (window.D3Api && D3Api.setVar) {\n");
-        sb.append("                                D3Api.setVar(src, value);\n");
-        sb.append("                            } else if (window.setVar) {\n");
-        sb.append("                                window.setVar(src, value);\n");
-        sb.append("                            }\n");
-        sb.append("                        } else if (srctype === 'ctrl') {\n");
-        sb.append("                            if (value === null) value = '';\n");
-        sb.append("                            if (window.D3Api && D3Api.setValue) {\n");
-        sb.append("                                D3Api.setValue(src, value);\n");
-        sb.append("                            } else {\n");
-        sb.append("                                var targetElement = document.querySelector('[name=\"' + src + '\"]');\n");
-        sb.append("                                if (targetElement) targetElement.value = value;\n");
-        sb.append("                            }\n");
-        sb.append("                        } else if (srctype === 'session') {\n");
-        sb.append("                            if (window.D3Api && D3Api.setSession) {\n");
-        sb.append("                                D3Api.setSession(src, value);\n");
-        sb.append("                            }\n");
-        sb.append("                        }\n");
-        sb.append("                    }\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("\n");
-        sb.append("            if (!window.D3Api || !D3Api.GLOBAL_ACTION) {\n");
-        sb.append("                window.D3Api = window.D3Api || {};\n");
-        sb.append("                D3Api.GLOBAL_ACTION = D3Api.GLOBAL_ACTION || {};\n");
-        sb.append("            }\n");
-        sb.append("            \n");
-        sb.append("            D3Api.GLOBAL_ACTION[nameAction] = dataObj;\n");
-        sb.append("\n");
-        sb.append("            if (callBack && typeof callBack === 'function') {\n");
-        sb.append("                // Вызываем callback даже при ошибке, но передаем информацию об ошибке\n");
-        sb.append("                if (dataObj.ERROR) {\n");
-        sb.append("                    // Если есть vars, передаем их вместе с ошибкой\n");
-        sb.append("                    if (dataObj.vars) {\n");
-        sb.append("                        callBack({ error: dataObj.ERROR, vars: dataObj.vars });\n");
-        sb.append("                    } else {\n");
-        sb.append("                        callBack({ error: dataObj.ERROR });\n");
-        sb.append("                    }\n");
-        sb.append("                } else {\n");
-        sb.append("                    callBack(dataObj.vars || {});\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("        })\n");
-        sb.append("        .catch(function(error) {\n");
-        sb.append("            console.error('Fetch error:', error);\n");
-        sb.append("            \n");
-        sb.append("            // Показываем ошибку сети\n");
-        sb.append("            var errorMsg = 'Ошибка соединения с сервером: ' + error.message;\n");
-        sb.append("            if (window.D3Api && D3Api.msgbox) {\n");
-        sb.append("                D3Api.msgbox(errorMsg, 'OK');\n");
-        sb.append("            } else {\n");
-        sb.append("                alert(errorMsg);\n");
-        sb.append("            }\n");
-        sb.append("            \n");
-        sb.append("            if (callBack && typeof callBack === 'function') {\n");
-        sb.append("                callBack({ error: error });\n");
-        sb.append("            }\n");
-        sb.append("        });\n");
-        sb.append("    };\n");
-        sb.append("\n");
-        sb.append("    // Инициализация после загрузки DOM\n");
-        sb.append("    if (document.readyState === 'loading') {\n");
-        sb.append("        document.addEventListener('DOMContentLoaded', initActions);\n");
-        sb.append("    } else {\n");
-        sb.append("        initActions();\n");
-        sb.append("    }\n");
-        sb.append("})();\n");
-
-        return sb.toString().getBytes();
+        return """
+            /**
+             * JavaScript библиотека для компонента cmpAction
+             * Предоставляет методы для работы с действиями на клиенте
+             * Использует новый механизм хранения данных D3Api
+             */
+            (function() {
+                // Предотвращаем повторную инициализацию
+                if (window.cmpActionInitialized) return;
+                window.cmpActionInitialized = true;
+            
+                console.log('cmpAction: JavaScript library initialized');
+            
+                /**
+                 * Расширение D3Api для работы с действиями
+                 */
+                if (typeof D3Api !== 'undefined') {
+                    
+                    /**
+                     * Установка автоматического действия
+                     * @param {string} name - Имя действия
+                     */
+                    D3Api.setActionAuto = function(name) {
+                        if (!this.GLOBAL_ACTION) this.GLOBAL_ACTION = {};
+                        this.GLOBAL_ACTION[name] = {};
+                    };
+                    
+                    /**
+                     * Выполнение действия
+                     * @param {string} nameAction - Имя действия
+                     * @param {Function} callBack - Функция обратного вызова
+                     */
+                    D3Api.executeAction = function(nameAction, callBack) {
+                        return executeAction(nameAction, callBack);
+                    };
+                    
+                    /**
+                     * Получение результата действия
+                     * @param {string} nameAction - Имя действия
+                     * @returns {Object} - Результат действия
+                     */
+                    D3Api.getActionResult = function(nameAction) {
+                        if (this.GLOBAL_ACTION && this.GLOBAL_ACTION[nameAction]) {
+                            return this.GLOBAL_ACTION[nameAction];
+                        }
+                        return null;
+                    };
+                }
+            
+                /**
+                 * Инициализация всех действий на странице
+                 */
+                function initActions() {
+                    var actionElements = document.querySelectorAll('[schema="Action"]');
+                    for (var i = 0; i < actionElements.length; i++) {
+                        var actionEl = actionElements[i];
+                        var name = actionEl.getAttribute('name');
+                        if (name && window.D3Api) {
+                            D3Api.setActionAuto(name);
+                            console.log('cmpAction: Auto-initialized action:', name);
+                        }
+                    }
+                }
+            
+                /**
+                 * Глобальная функция выполнения действия
+                 * @param {string} nameAction - Имя действия
+                 * @param {Function} callBack - Функция обратного вызова
+                 */
+                window.executeAction = function(nameAction, callBack) {
+                    var ctrlObj = document.querySelector('[name="' + nameAction + '"]');
+                    if (!ctrlObj) {
+                        console.error('Action not found:', nameAction);
+                        return;
+                    }
+            
+                    // Получаем атрибуты
+                    var varsString = ctrlObj.getAttribute('vars');
+                    console.log('Raw vars string:', varsString);
+            
+                    // Парсим vars
+                    var jsonVars = {};
+            
+                    try {
+                        var fixedString = varsString
+                            .replace(/'/g, '"')
+                            .replace(/(\\w+):/g, '"$1":')
+                            .replace(/,\\s*}/g, '}');
+            
+                        console.log('Fixed string:', fixedString);
+                        jsonVars = JSON.parse(fixedString);
+                    } catch (e) {
+                        console.log('JSON parse failed, trying manual parse:', e);
+            
+                        try {
+                            var cleanStr = varsString.trim();
+                            if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {
+                                cleanStr = cleanStr.substring(1, cleanStr.length - 1);
+                            }
+            
+                            var pairs = [];
+                            var depth = 0;
+                            var current = '';
+            
+                            for (var i = 0; i < cleanStr.length; i++) {
+                                var c = cleanStr[i];
+            
+                                if (c === '{') depth++;
+                                else if (c === '}') depth--;
+            
+                                if (c === ',' && depth === 0) {
+                                    pairs.push(current);
+                                    current = '';
+                                } else {
+                                    current += c;
+                                }
+                            }
+                            if (current.trim()) {
+                                pairs.push(current);
+                            }
+            
+                            for (var p = 0; p < pairs.length; p++) {
+                                var pair = pairs[p];
+                                var colonIndex = pair.indexOf(':');
+                                if (colonIndex === -1) continue;
+            
+                                var key = pair.substring(0, colonIndex).trim().replace(/['"]/g, '');
+                                var valueStr = pair.substring(colonIndex + 1).trim();
+            
+                                if (valueStr.startsWith('{') && valueStr.endsWith('}')) {
+                                    var obj = {};
+                                    var innerStr = valueStr.substring(1, valueStr.length - 1);
+                                    var innerPairs = innerStr.split(',');
+            
+                                    for (var inner = 0; inner < innerPairs.length; inner++) {
+                                        var innerPair = innerPairs[inner];
+                                        var innerColon = innerPair.indexOf(':');
+                                        if (innerColon === -1) continue;
+            
+                                        var innerKey = innerPair.substring(0, innerColon).trim().replace(/['"]/g, '');
+                                        var innerValue = innerPair.substring(innerColon + 1).trim().replace(/['"]/g, '');
+                                        obj[innerKey] = innerValue;
+                                    }
+                                    jsonVars[key] = obj;
+                                }
+                            }
+            
+                            console.log('Manually parsed vars:', jsonVars);
+                        } catch (e2) {
+                            console.error('Manual parse failed:', e2);
+                        }
+                    }
+            
+                    var query_type = ctrlObj.getAttribute('query_type') || 'java';
+                    var action_name = ctrlObj.getAttribute('action_name');
+            
+                    console.log('Action info:', {query_type, action_name});
+                    console.log('Parsed vars:', jsonVars);
+            
+                    // Формируем данные для отправки
+                    var requestData = {};
+            
+                    for (var key in jsonVars) {
+                        var varInfo = jsonVars[key];
+                        if (!varInfo) continue;
+            
+                        var value = '';
+                        var src = varInfo.src || key;
+                        var srctype = varInfo.srctype || 'var';
+                        var defaultVal = varInfo.defaultVal || '';
+                        var len = varInfo.len || '';
+            
+                        // Используем новый механизм D3Api для получения значений
+                        if (srctype === 'var') {
+                            if (window.D3Api && D3Api.getVar) {
+                                value = D3Api.getVar(src) || defaultVal;
+                            } else {
+                                value = window.getVar ? window.getVar(src) || defaultVal : defaultVal;
+                            }
+                        } else if (srctype === 'ctrl') {
+                            if (window.D3Api && D3Api.getValue) {
+                                value = D3Api.getValue(src) || defaultVal;
+                            } else {
+                                var ctrlElement = document.querySelector('[name="' + src + '"]');
+                                value = ctrlElement ? ctrlElement.value : defaultVal;
+                            }
+                        } else if (srctype === 'session') {
+                            if (window.D3Api && D3Api.getSession) {
+                                value = D3Api.getSession(src) || defaultVal;
+                            } else {
+                                value = defaultVal;
+                            }
+                        }
+            
+                        requestData[key] = {
+                            'srctype': srctype,
+                            'src': src,
+                            'value': String(value),
+                            'defaultVal': defaultVal
+                        };
+            
+                        if (len) {
+                            requestData[key].len = len;
+                        }
+                    }
+            
+                    console.log('Sending request data:', requestData);
+                    console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'));
+            
+                    fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestData)
+                    })
+                    .then(function(response) {
+                        return response.json();
+                    })
+                    .then(function(dataObj) {
+                        console.log('Response received:', dataObj);
+            
+                        if (dataObj.redirect) {
+                            if (window.saveDirect) {
+                                window.saveDirect('loginDirect');
+                            }
+                            window.location.href = dataObj.redirect;
+                            return;
+                        }
+            
+                        // Улучшенная обработка ошибок
+                        if (dataObj.ERROR) {
+                            console.error('Action error:', dataObj.ERROR);
+                            
+                            // Если есть детальная информация об ошибке, показываем её
+                            if (typeof dataObj.ERROR === 'object') {
+                                var errorMsg = dataObj.ERROR.message || 'Unknown error';
+                                var errorHint = dataObj.ERROR.hint || '';
+                                var fieldValue = dataObj.ERROR.field_value || '';
+                                
+                                // Формируем сообщение для пользователя
+                                var userMessage = 'Ошибка выполнения действия: ' + errorMsg;
+                                if (errorHint) {
+                                    userMessage += '\\n' + errorHint;
+                                }
+                                if (fieldValue) {
+                                    userMessage += '\\nЗначение поля: "' + fieldValue + '"';
+                                }
+                                
+                                // Показываем сообщение пользователю
+                                if (window.D3Api && D3Api.msgbox) {
+                                    D3Api.msgbox(userMessage, 'OK');
+                                } else {
+                                    alert(userMessage);
+                                }
+                            } else {
+                                // Простая ошибка в виде строки
+                                var errorStr = String(dataObj.ERROR);
+                                if (window.D3Api && D3Api.msgbox) {
+                                    D3Api.msgbox('Ошибка: ' + errorStr, 'OK');
+                                } else {
+                                    alert('Ошибка: ' + errorStr);
+                                }
+                            }
+                        }
+            
+                        // Обрабатываем выходные переменные через новый механизм D3Api
+                        if (dataObj.vars) {
+                            var data = dataObj.vars;
+                            for (var key in data) {
+                                var varInfo = data[key];
+                                if (typeof varInfo === 'object') {
+                                    var value = varInfo.value;
+                                    var srctype = varInfo.srctype || 'var';
+                                    var src = varInfo.src || key;
+            
+                                    if (value === 'null') value = null;
+                                    else if (value === 'true') value = true;
+                                    else if (value === 'false') value = false;
+            
+                                    console.log('Setting output:', {key, srctype, src, value});
+            
+                                    if (srctype === 'var') {
+                                        if (window.D3Api && D3Api.setVar) {
+                                            D3Api.setVar(src, value);
+                                        } else if (window.setVar) {
+                                            window.setVar(src, value);
+                                        }
+                                    } else if (srctype === 'ctrl') {
+                                        if (value === null) value = '';
+                                        if (window.D3Api && D3Api.setValue) {
+                                            D3Api.setValue(src, value);
+                                        } else {
+                                            var targetElement = document.querySelector('[name="' + src + '"]');
+                                            if (targetElement) targetElement.value = value;
+                                        }
+                                    } else if (srctype === 'session') {
+                                        if (window.D3Api && D3Api.setSession) {
+                                            D3Api.setSession(src, value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+            
+                        if (!window.D3Api || !D3Api.GLOBAL_ACTION) {
+                            window.D3Api = window.D3Api || {};
+                            D3Api.GLOBAL_ACTION = D3Api.GLOBAL_ACTION || {};
+                        }
+                        
+                        D3Api.GLOBAL_ACTION[nameAction] = dataObj;
+            
+                        if (callBack && typeof callBack === 'function') {
+                            // Вызываем callback даже при ошибке, но передаем информацию об ошибке
+                            if (dataObj.ERROR) {
+                                // Если есть vars, передаем их вместе с ошибкой
+                                if (dataObj.vars) {
+                                    callBack({ error: dataObj.ERROR, vars: dataObj.vars });
+                                } else {
+                                    callBack({ error: dataObj.ERROR });
+                                }
+                            } else {
+                                callBack(dataObj.vars || {});
+                            }
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('Fetch error:', error);
+                        
+                        // Показываем ошибку сети
+                        var errorMsg = 'Ошибка соединения с сервером: ' + error.message;
+                        if (window.D3Api && D3Api.msgbox) {
+                            D3Api.msgbox(errorMsg, 'OK');
+                        } else {
+                            alert(errorMsg);
+                        }
+                        
+                        if (callBack && typeof callBack === 'function') {
+                            callBack({ error: error });
+                        }
+                    });
+                };
+            
+                // Инициализация после загрузки DOM
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initActions);
+                } else {
+                    initActions();
+                }
+            })();
+            """.getBytes();
     }
 }
