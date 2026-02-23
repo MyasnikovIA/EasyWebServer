@@ -226,9 +226,6 @@ public class cmpDataset_js {
                             requestData[key]['len'] = varInfo['len'];
                         }
                     }
-            
-                    console.log('Sending request data:', requestData);
-                    debugger
                     fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + ((ctrlObj.getAttribute('pg_schema') || 'public') + '&database_name='+database_name+'&db_type='+db_type), {
                         method: 'POST',
                         headers: {
