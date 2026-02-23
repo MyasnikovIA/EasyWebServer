@@ -98,6 +98,7 @@ public class Base extends Element {
 
     public String RemoveArrKeyRtrn(Attributes arr, String key, String defaultValue) {
         String value = "";
+        key = key.toLowerCase();
         if (arr.hasKey(key)) {
             value = arr.get(key);
             arr.remove(key);

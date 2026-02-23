@@ -179,7 +179,9 @@ public class cmpDataset_js {
                     var query_type = ctrlObj.getAttribute('query_type');
                     var db = ctrlObj.getAttribute('db');
                     var dataset_name = ctrlObj.getAttribute('dataset_name');
-            
+                    var database_name = ctrlObj.getAttribute('db');
+                    var db_type = ctrlObj.getAttribute('db_type');
+             
                     console.log('Dataset info:', {query_type, db, dataset_name});
             
                     // Формируем данные для отправки
@@ -226,8 +228,8 @@ public class cmpDataset_js {
                     }
             
                     console.log('Sending request data:', requestData);
-            
-                    fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {
+                    debugger
+                    fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + ((ctrlObj.getAttribute('pg_schema') || 'public') + '&database_name='+database_name+'&db_type='+db_type), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
