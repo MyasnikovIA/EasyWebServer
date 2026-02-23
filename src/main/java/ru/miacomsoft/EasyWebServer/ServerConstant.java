@@ -22,6 +22,10 @@ public final class ServerConstant {
     public String DATABASE_NAME = "jdbc:postgresql://your_host:your_port/your_database";
     public String DATABASE_USER_NAME = "postgres";
     public String DATABASE_USER_PASS = "******";
+
+    // Новая структура для хранения множественных БД
+    public Map<String, DatabaseConfig> DATABASES = new HashMap<>();
+
     public String LIB_DIR = "D:\\JavaProject\\HttpServer-JAVA\\lib";
     public String APP_NAME = "webpage";
 
@@ -146,6 +150,20 @@ public final class ServerConstant {
         setIfPresent(jsonConfig, "DATABASE_NAME", val -> DATABASE_NAME = val);
         setIfPresent(jsonConfig, "DATABASE_USER_NAME", val -> DATABASE_USER_NAME = val);
         setIfPresent(jsonConfig, "DATABASE_USER_PASS", val -> DATABASE_USER_PASS = val);
+
+        // Парсим множественные БД
+        if (jsonConfig.has("DATABASES")) {
+            JSONObject dbs = jsonConfig.getJSONObject("DATABASES");
+            dbs.keys().forEachRemaining(key -> {
+                String connStr = dbs.getString(key);
+                DatabaseConfig dbConfig = DatabaseConfig.parse(connStr);
+                if (dbConfig != null) {
+                    DATABASES.put(key, dbConfig);
+                    System.out.println("Loaded database config: " + key + " -> " + dbConfig.getType());
+                }
+            });
+        }
+
         setIfPresent(jsonConfig, "APP_NAME", val -> APP_NAME = val);
 
         // Булевы настройки
@@ -365,5 +383,62 @@ public final class ServerConstant {
 
     public void addMime(String fileExtension, String mimeType) {
         MIME_MAP.put(fileExtension, mimeType);
+    }
+
+    /**
+     * Получить конфигурацию БД по имени
+     * Если имя не указано или равно "default", возвращает БД по умолчанию
+     */
+    public DatabaseConfig getDatabaseConfig(String dbName) {
+        if (dbName == null || dbName.isEmpty() || "default".equals(dbName)) {
+            // Сначала ищем БД с именем "default"
+            if (DATABASES.containsKey("default")) {
+                return DATABASES.get("default");
+            }
+            // Если нет default, берем первую из списка
+            if (!DATABASES.isEmpty()) {
+                return DATABASES.values().iterator().next();
+            }
+            // Если нет дополнительных БД, используем основную
+            if (DATABASE_NAME != null && !DATABASE_NAME.isEmpty()) {
+                return new DatabaseConfig("jdbc", DATABASE_USER_NAME, DATABASE_USER_PASS,
+                        parseJdbcUrl(DATABASE_NAME));
+            }
+            return null;
+        }
+
+        return DATABASES.get(dbName);
+    }
+
+    /**
+     * Парсит JDBC URL для получения хоста, порта, базы данных
+     */
+    private DatabaseConfig.ConnectionInfo parseJdbcUrl(String url) {
+        DatabaseConfig.ConnectionInfo info = new DatabaseConfig.ConnectionInfo();
+        if (url == null || url.isEmpty()) {
+            return info;
+        }
+
+        try {
+            // Пример: jdbc:postgresql://localhost:5432/Panorama360
+            if (url.contains("://")) {
+                String withoutProtocol = url.substring(url.indexOf("://") + 3);
+                String[] hostPortDb = withoutProtocol.split("/", 2);
+                if (hostPortDb.length > 0) {
+                    String[] hostPort = hostPortDb[0].split(":");
+                    info.host = hostPort[0];
+                    if (hostPort.length > 1) {
+                        info.port = hostPort[1];
+                    }
+                }
+                if (hostPortDb.length > 1) {
+                    info.database = hostPortDb[1];
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing JDBC URL: " + e.getMessage());
+        }
+
+        return info;
     }
 }

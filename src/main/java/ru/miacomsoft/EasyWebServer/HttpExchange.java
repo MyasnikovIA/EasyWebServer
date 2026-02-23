@@ -16,6 +16,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.DriverManager;
 
 public class HttpExchange {
     public Socket socket;
@@ -43,7 +48,7 @@ public class HttpExchange {
     public int countQuery = 0;
 
     /// PtP - объект для обмена данными между устройствами "точка ту точка"
-    public HttpExchange queryPtP=null;
+    public HttpExchange queryPtP = null;
 
     // Thread-safe shared resources
     public static final Map<String, HttpExchange> DevList = new ConcurrentHashMap<>();
@@ -105,6 +110,7 @@ public class HttpExchange {
         }
         sendHtml(sb.toString());
     }
+
     public void sendFile(File file) {
         String filename = file.getName().toLowerCase();
         String mimeType = ServerConstant.config.MIME_MAP.getOrDefault(
@@ -113,6 +119,7 @@ public class HttpExchange {
         );
         sendFile(file, mimeType);
     }
+
     public void sendFile(File file, String contentType) {
         try (InputStream in = new FileInputStream(file);
              OutputStream out = socket.getOutputStream()) {
@@ -150,6 +157,7 @@ public class HttpExchange {
             e.printStackTrace();
         }
     }
+
     public boolean write(byte[] content) {
         try {
             socket.getOutputStream().write(content);
@@ -170,6 +178,7 @@ public class HttpExchange {
             sendResponse(content, false);
         }
     }
+
     public void send(String content) {
         send(content.getBytes(Charset.forName("UTF-8")));
     }
@@ -256,6 +265,7 @@ public class HttpExchange {
         int dotIndex = filename.lastIndexOf('.');
         return (dotIndex >= 0) ? filename.substring(dotIndex + 1) : "";
     }
+
     public void sendImageFile(File file) {
         try (InputStream in = new FileInputStream(file);
              OutputStream out = socket.getOutputStream()) {
@@ -281,7 +291,7 @@ public class HttpExchange {
             out.write("HTTP/1.1 200 OK\r\n".getBytes());
             out.write(("Content-Type: " + contentType + "\r\n").getBytes());
             out.write(("Content-Length: " + file.length() + "\r\n").getBytes());
-            out.write(("Accept-Ranges: bytes\r\n").getBytes());
+            out.write(("Accept-Ranges: bytes\r\n".getBytes()));
             out.write("Cache-Control: public, max-age=86400\r\n".getBytes());
 
             out.write("\r\n".getBytes());
@@ -298,6 +308,7 @@ public class HttpExchange {
             e.printStackTrace();
         }
     }
+
     public String readLine() {
         StringBuilder sb = new StringBuilder();
         int c;
@@ -359,70 +370,43 @@ public class HttpExchange {
     }
 
     /**
-     * Выполняет SQL запрос и возвращает результат в формате JSONArray
-     * Автоматически создает схему в PostgreSQL, если она не существует
-     *
-     * @param sql SQL запрос для выполнения
-     * @return результат запроса в формате JSONArray
+     * Выполняет SQL запрос с использованием БД по умолчанию
      */
     public JSONArray SQL(String sql) {
-        JSONArray result = new JSONArray();
-        Connection conn = null;
+        return SQL(sql, null);
+    }
 
+    /**
+     * Выполняет SQL запрос с указанием имени БД из конфигурации
+     * @param sql SQL запрос
+     * @param dbName имя БД из конфигурации (если null, используется БД по умолчанию)
+     * @return результат в формате JSONArray
+     */
+    public JSONArray SQL(String sql, String dbName) {
+        JSONArray result = new JSONArray();
+        java.sql.Connection conn = null;
+         DatabaseConfig dbConfig = getDatabaseConfig(dbName);
         try {
             // Проверяем наличие сессии и DATABASE
-            if (session == null || !session.containsKey("DATABASE")) {
-                System.err.println("No database connection available in session");
-                return result; // Возвращаем пустой результат без ошибки
+            if (session == null) {
+                System.err.println("No session available for database connection");
+                return result;
             }
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> dataBase = (Map<String, Object>) session.get("DATABASE");
-
-            if (dataBase.containsKey("CONNECT")) {
-                conn = (Connection) dataBase.get("CONNECT");
-            } else {
-                // Проверяем наличие данных для подключения
-                if (!dataBase.containsKey("DATABASE_USER_NAME") || !dataBase.containsKey("DATABASE_USER_PASS")) {
-                    System.err.println("Database credentials not found in session");
-                    return result;
-                }
-
-                String user = (String) dataBase.get("DATABASE_USER_NAME");
-                String pass = (String) dataBase.get("DATABASE_USER_PASS");
-
-                conn = PostgreQuery.getConnect(user, pass);
-                if (conn != null) {
-                    // Проверяем и создаем схему если нужно
-                    ensureSchemaExists(conn, sql);
-                    dataBase.put("CONNECT", conn);
-                } else {
-                    System.err.println("Failed to connect to database");
-                    return result;
-                }
+            if (dbConfig == null) {
+                System.err.println("No database configuration found for: " + (dbName != null ? dbName : "default"));
+                return result;
             }
 
-            if (conn == null || conn.isClosed()) {
-                // Пытаемся переподключиться
-                if (!dataBase.containsKey("DATABASE_USER_NAME") || !dataBase.containsKey("DATABASE_USER_PASS")) {
-                    System.err.println("Cannot reconnect - missing credentials");
-                    return result;
-                }
-
-                String user = (String) dataBase.get("DATABASE_USER_NAME");
-                String pass = (String) dataBase.get("DATABASE_USER_PASS");
-                conn = PostgreQuery.getConnect(user, pass);
-
-                if (conn == null) {
-                    System.err.println("Failed to reconnect to database");
-                    return result;
-                }
-
-                dataBase.put("CONNECT", conn);
-
-                // Проверяем и создаем схему если нужно
-                ensureSchemaExists(conn, sql);
+            // Получаем или создаем подключение
+            conn = getDatabaseConnection(dbConfig);
+            if (conn == null) {
+                System.err.println("Failed to connect to database: " + dbConfig.getType());
+                return result;
             }
+
+            // Проверяем и создаем схему если нужно
+            ensureSchemaExists(conn, sql, dbConfig);
 
             // Выполняем SQL запрос
             try (Statement stmt = conn.createStatement();
@@ -443,7 +427,7 @@ public class HttpExchange {
         } catch (SQLException | JSONException e) {
             System.err.println("SQL Error: " + e.getMessage());
 
-            // Проверяем, не связана ли ошибка с отсутствием схемы и есть ли соединение
+            // Проверяем, не связана ли ошибка с отсутствием схемы
             if (conn != null && e.getMessage() != null && e.getMessage().contains("schema") &&
                     (e.getMessage().contains("does not exist") || e.getMessage().contains("not found"))) {
 
@@ -452,9 +436,9 @@ public class HttpExchange {
                 if (schemaName != null && !schemaName.isEmpty()) {
                     try {
                         // Пытаемся создать схему
-                        if (createSchemaIfNotExists(conn, schemaName)) {
+                        if (createSchemaIfNotExists(conn, schemaName, dbConfig)) {
                             // Повторяем запрос
-                            return SQL(sql);
+                            return SQL(sql, dbName);
                         }
                     } catch (Exception ex) {
                         System.err.println("Failed to create schema: " + ex.getMessage());
@@ -462,23 +446,92 @@ public class HttpExchange {
                 }
             }
         } catch (Exception e) {
-            // Ловим любые другие ошибки, чтобы не нарушать работу без БД
+            // Ловим любые другие ошибки, чтобы не нарушать работу
             System.err.println("Unexpected error in SQL method: " + e.getMessage());
         }
 
         return result;
     }
 
+    /**
+     * Получает конфигурацию БД по имени
+     */
+    private DatabaseConfig getDatabaseConfig(String dbName) {
+        // Если в сессии уже есть информация о БД, используем её
+        if (session != null && session.containsKey("DATABASE_CONFIG_" + (dbName != null ? dbName : "default"))) {
+            return (DatabaseConfig) session.get("DATABASE_CONFIG_" + (dbName != null ? dbName : "default"));
+        }
 
+        // Иначе получаем из глобальной конфигурации
+        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
+
+        // Кэшируем в сессии
+        if (dbConfig != null && session != null) {
+            session.put("DATABASE_CONFIG_" + (dbName != null ? dbName : "default"), dbConfig);
+        }
+
+        return dbConfig;
+    }
 
     /**
-     * Извлекает имя схемы из сообщения об ошибке PostgreSQL
+     * Получает подключение к БД (с кэшированием)
+     */
+    private java.sql.Connection getDatabaseConnection(DatabaseConfig dbConfig) {
+        if (dbConfig == null) return null;
+
+        try {
+            // Проверяем кэшированное подключение
+            java.sql.Connection conn = (java.sql.Connection) dbConfig.getConnection();
+            if (conn != null && !conn.isClosed()) {
+                return conn;
+            }
+
+            // Создаем новое подключение
+            Class.forName(dbConfig.getDriver());
+
+            java.sql.Connection newConn;
+            if ("oci8".equals(dbConfig.getType())) {
+                // Oracle подключение
+                newConn = java.sql.DriverManager.getConnection(
+                        dbConfig.getJdbcUrl(),
+                        dbConfig.getUsername(),
+                        dbConfig.getPassword()
+                );
+            } else {
+                // PostgreSQL подключение
+                newConn = java.sql.DriverManager.getConnection(
+                        dbConfig.getJdbcUrl(),
+                        dbConfig.getUsername(),
+                        dbConfig.getPassword()
+                );
+
+                // Устанавливаем схему если указана
+                if (dbConfig.getSchema() != null && !dbConfig.getSchema().isEmpty()) {
+                    try (Statement stmt = newConn.createStatement()) {
+                        stmt.execute("SET search_path TO '" + dbConfig.getSchema() + "'");
+                    }
+                }
+            }
+
+            // Кэшируем подключение
+            dbConfig.setConnection(newConn);
+
+            return newConn;
+
+        } catch (Exception e) {
+            System.err.println("Error connecting to database: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Извлекает имя схемы из сообщения об ошибке
      */
     private String extractSchemaNameFromError(String errorMessage) {
         if (errorMessage == null) return null;
 
         try {
-            // Пример сообщения: ERROR: schema "schema_name" does not exist
+            // Для PostgreSQL: schema "schema_name" does not exist
             int startQuote = errorMessage.indexOf("\"");
             if (startQuote >= 0) {
                 int endQuote = errorMessage.indexOf("\"", startQuote + 1);
@@ -486,6 +539,9 @@ public class HttpExchange {
                     return errorMessage.substring(startQuote + 1, endQuote);
                 }
             }
+
+            // Для Oracle: ORA-00942: table or view does not exist
+            // Не можем извлечь схему из такого сообщения
         } catch (Exception e) {
             // Игнорируем ошибки парсинга
         }
@@ -493,55 +549,64 @@ public class HttpExchange {
     }
 
     /**
-     * Создает схему в PostgreSQL, если она не существует
+     * Создает схему, если она не существует
      */
-    private boolean createSchemaIfNotExists(Connection conn, String schemaName) {
-        // Проверяем наличие соединения
+    private boolean createSchemaIfNotExists(java.sql.Connection conn, String schemaName, DatabaseConfig dbConfig) {
         if (conn == null || schemaName == null || schemaName.isEmpty()) {
             return false;
         }
 
         try {
-            // Проверяем, что соединение открыто
             if (conn.isClosed()) {
                 System.err.println("Connection is closed, cannot create schema");
                 return false;
             }
 
-            try (Statement stmt = conn.createStatement()) {
-                // Проверяем существование схемы
-                String checkSql = "SELECT 1 FROM information_schema.schemata WHERE schema_name = '" + schemaName + "'";
-                try (ResultSet rs = stmt.executeQuery(checkSql)) {
-                    if (!rs.next()) {
-                        // Схема не существует - создаем её
-                        String createSql = "CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"";
-                        stmt.executeUpdate(createSql);
-                        System.out.println("Created schema: " + schemaName);
-                        return true;
+            // Используем dbConfig для определения типа БД
+            if (dbConfig != null && "oci8".equals(dbConfig.getType())) {
+                // Oracle не имеет схем в том же понимании, что PostgreSQL
+                // В Oracle схема это пользователь
+                System.err.println("Schema creation not supported for Oracle");
+                return false;
+            } else {
+                // PostgreSQL
+                try (Statement stmt = conn.createStatement()) {
+                    // Проверяем существование схемы
+                    String checkSql = "SELECT 1 FROM information_schema.schemata WHERE schema_name = '" + schemaName + "'";
+                    try (ResultSet rs = stmt.executeQuery(checkSql)) {
+                        if (!rs.next()) {
+                            // Схема не существует - создаем её
+                            String createSql = "CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"";
+                            stmt.executeUpdate(createSql);
+                            System.out.println("Created schema: " + schemaName);
+                            return true;
+                        }
                     }
                 }
             }
         } catch (SQLException e) {
             System.err.println("Error creating schema: " + e.getMessage());
-            // Не пробрасываем исключение дальше
         } catch (Exception e) {
             System.err.println("Unexpected error creating schema: " + e.getMessage());
         }
         return false;
     }
 
-
     /**
-     * Проверяет существование схемы в SQL запросе и создает её при необходимости
+     * Проверяет существование схемы в SQL запросе
      */
-    private void ensureSchemaExists(Connection conn, String sql) {
-        // Проверяем наличие соединения
+    private void ensureSchemaExists(java.sql.Connection conn, String sql, DatabaseConfig dbConfig) {
         if (conn == null || sql == null || sql.isEmpty()) {
             return;
         }
 
+        // Проверяем тип БД - для Oracle не создаем схемы автоматически
+        if (dbConfig != null && "oci8".equals(dbConfig.getType())) {
+            // Oracle не поддерживает автоматическое создание схем в том же виде, что PostgreSQL
+            return;
+        }
+
         try {
-            // Проверяем, что соединение открыто
             if (conn.isClosed()) {
                 return;
             }
@@ -561,7 +626,7 @@ public class HttpExchange {
 
                     // Проверяем, не является ли это частью сложного имени
                     if (!possibleSchema.contains(".")) {
-                        createSchemaIfNotExists(conn, possibleSchema);
+                        createSchemaIfNotExists(conn, possibleSchema, dbConfig);
                     }
                 }
             }
@@ -575,10 +640,10 @@ public class HttpExchange {
             matcher = pattern.matcher(sql);
             while (matcher.find()) {
                 String schemaName = matcher.group(1);
-                createSchemaIfNotExists(conn, schemaName);
+                createSchemaIfNotExists(conn, schemaName, dbConfig);
             }
         } catch (Exception e) {
-            // Игнорируем все ошибки при проверке схем - не критично
+            // Игнорируем все ошибки при проверке схем
             System.err.println("Error in ensureSchemaExists: " + e.getMessage());
         }
     }
@@ -597,6 +662,7 @@ public class HttpExchange {
         sbError.append("</pre>");
         return sbError.toString();
     }
+
     /**
      * Получить режим отладки для текущей сессии
      * @return true если включен режим отладки

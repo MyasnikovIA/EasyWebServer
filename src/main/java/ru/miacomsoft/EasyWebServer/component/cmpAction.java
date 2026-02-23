@@ -15,6 +15,7 @@ import java.util.*;
 
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.*;
 
+@SuppressWarnings("unchecked")
 public class cmpAction extends Base {
 
     // Кэш для хранения информации о существовании функций в БД

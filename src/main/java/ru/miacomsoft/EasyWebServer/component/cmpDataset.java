@@ -17,7 +17,7 @@ import java.util.*;
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.getConnect;
 import static ru.miacomsoft.EasyWebServer.PostgreQuery.procedureList;
 
-
+@SuppressWarnings("unchecked")
 public class cmpDataset extends Base {
 
     // Кэш для хранения информации о существовании функций в БД

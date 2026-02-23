@@ -193,11 +193,12 @@ public class PacketManager {
 
     private static void processTerminalAnnotation(Class<?> clazz, Method method, onTerminal annotation) {
         Class<?>[] parameterTypes = method.getParameterTypes();
-        if (parameterTypes.length == 1 && !parameterTypes[0].equals("WebServerLite.HttpExchange")) {
+        if (parameterTypes.length == 1 && parameterTypes[0].equals(HttpExchange.class)) {
             JavaTerminalClassObject term = new JavaTerminalClassObject();
             term.method = method;
             try {
-                term.ObjectInstance = clazz.newInstance();
+                // Исправляем устаревший newInstance()
+                term.ObjectInstance = clazz.getDeclaredConstructor().newInstance();
                 term.classNat = clazz;
                 term.url = annotation.url();
                 ServerResource.pagesJavaTerminalClass.put(annotation.url(), term);

@@ -38,7 +38,7 @@ public class JavaStrExecut {
     /**
      * Объект компилируемого класса (используется для хронения скомпелированных классов)
      */
-    private class CompileObject {
+    private static class CompileObject {
         Class<?> ClassNat = null;     // объект класса, по которому будет создан экземпляр класса
         Object ObjectInstance = null; // Экземпляр класса
         String CodeText = null;       // Код программы
@@ -57,6 +57,7 @@ public class JavaStrExecut {
      * res.get("JAVA_CODE_SRC") - получение исходного кода
      * res.get("JAVA_ERROR") - получение объекта ошибки
      */
+    @SuppressWarnings("unchecked")
     public HashMap<String, Object> exec(String code, HashMap<String, Object> vars, HashMap<String, Object> session) {
         HashMap<String, Object> res = new HashMap<>();
         if (session == null) {
@@ -86,7 +87,7 @@ public class JavaStrExecut {
             } else {
                 compileObject = (CompileObject) InstanceClassHash.get(hashCrs);
             }
-            Class[] argTypes = new Class[]{HashMap.class, HashMap.class};             // перечисляем типы входящих переменных
+            Class<?>[] argTypes = new Class[]{HashMap.class, HashMap.class};             // перечисляем типы входящих переменных
             Method meth = compileObject.ClassNat.getMethod("evalFunc", argTypes);                                // получаем метод по имени и типам входящих переменных
             res = (HashMap<String, Object>) meth.invoke(compileObject.ObjectInstance, vars, session); // запуск мектода на выполнение
             res.put("JAVA_CODE_SRC", src);
@@ -149,6 +150,7 @@ public class JavaStrExecut {
      * @return - возвращается объект vars
      * res.get("JAVA_ERROR") - получение объекта ошибки
      */
+    @SuppressWarnings("unchecked")
     public JSONObject runFunction(String nameFunction, JSONObject vars, Map<String, Object> session, JSONArray data) {
         JSONObject res = new JSONObject();
         if (session == null) {
@@ -165,7 +167,7 @@ public class JavaStrExecut {
                 res.put("JAVA_ERROR", "Compile file not found");
             } else {
                 CompileObject compileObject = (CompileObject) InstanceClassName.get(nameFunction);
-                Class[] argTypes = new Class[]{JSONObject.class, HashMap.class, JSONArray.class};
+                Class<?>[] argTypes = new Class[]{JSONObject.class, HashMap.class, JSONArray.class};
                 Method meth = compileObject.ClassNat.getMethod("evalFunc", argTypes);
 
                 // Создаем копию vars, где все значения преобразованы в строки
@@ -183,7 +185,7 @@ public class JavaStrExecut {
                     }
                 }
 
-                System.out.println("Calling Java function with safe vars: " + safeVars.toString());
+                System.out.println("Calling Java function with safe vars: " + safeVars);
 
                 try {
                     res = (JSONObject) meth.invoke(compileObject.ObjectInstance, safeVars, session, data);
@@ -276,13 +278,6 @@ public class JavaStrExecut {
      */
     public boolean compile(String name, ArrayList<String> importPacket, ArrayList<String> jarResourse, String code, JSONObject info) {
         boolean res = true;
-        StringBuffer importPacketString = new StringBuffer();
-        Set<String> importSet = new LinkedHashSet<String>(importPacket);
-        for (String key : importSet) {
-            importPacketString.append("\nimport ");
-            importPacketString.append(key);
-            importPacketString.append(";");
-        }
         String src = "" +
                 "import java.util.HashMap; \n" +
                 "import java.util.ArrayList; \n" +
@@ -295,7 +290,6 @@ public class JavaStrExecut {
                 + "    }\n"
                 + "}\n";
         String hashCrs = getMd5Hash(src); // получаем хэш текста исходника функции
-        //System.out.print("src\n" + src);
         info.put("compile", false);
         info.put("src", src);
         if (!InstanceClassHash.containsKey(hashCrs)) {
@@ -303,7 +297,6 @@ public class JavaStrExecut {
             if (!compileMemoryMemory(src, "SpecialClassToCompileV3", classLoader, jarResourse, info)) {
                 return false;
             }
-            ;
             try {
                 CompileObject compileObject = new CompileObject();
                 compileObject.ClassNat = Class.forName("SpecialClassToCompileV3", false, classLoader);
@@ -336,6 +329,7 @@ public class JavaStrExecut {
      *
      * @return
      */
+    @SuppressWarnings("unchecked")
     public boolean compileFile(String rootPath, String requestPath, JSONObject info, boolean debugMode) {
         if (info == null) {
             info = new JSONObject();
@@ -343,9 +337,6 @@ public class JavaStrExecut {
         boolean res = true;
         String src = "";
         String resourcePath = rootPath + '/' + requestPath;
-//        if (InstanceClassName.containsKey(requestPath) && !ServerConstant.config.DEBUG) {
-//            return true;
-//        }
         try {
             File nameFileObj = new File(resourcePath);
             String nameFile = nameFileObj.getName();
@@ -353,7 +344,7 @@ public class JavaStrExecut {
             long lastModified = nameFileObj.lastModified(); // дата последней модификации файла
             String hashCrs ="";
             // Если Java файл не был скомпилирован, или был модифицирован, тогда перекомпилируем его.
-            if (!InstanceClassName.containsKey(requestPath) || ((CompileObject) InstanceClassName.get(requestPath)).lastModified != lastModified || debugMode) { //
+            if (!InstanceClassName.containsKey(requestPath) || ((CompileObject) InstanceClassName.get(requestPath)).lastModified != lastModified || debugMode) {
                 InputStream in = new FileInputStream(resourcePath);
                 InputStreamReader inputStreamReader = new InputStreamReader(in);
                 StringBuffer sb = new StringBuffer();
@@ -382,14 +373,14 @@ public class JavaStrExecut {
                     compileObject.ClassNat = Class.forName(classNameText, false, classLoader);
                     compileObject.ObjectInstance = compileObject.ClassNat.getDeclaredConstructor().newInstance();
                     compileObject.CodeText = src;
-                    for ( Method method :compileObject.ClassNat.getMethods()) {
-                        for (Class paranType: method.getParameterTypes()) {
-                            if (paranType.getName().equals(HttpExchange.class.getName())) {
-                                // Запоминаем методы, у которых первый вхлдящий атрибут имеет тип HttpExchange
+                    for (Method method : compileObject.ClassNat.getMethods()) {
+                        for (Class<?> paramType : method.getParameterTypes()) {
+                            if (paramType.getName().equals(HttpExchange.class.getName())) {
+                                // Запоминаем методы, у которых есть параметр типа HttpExchange
                                 compileObject.methods.put(method.getName(), method);
                             }
                         }
-                    };
+                    }
                     compileObject.lastModified = lastModified;
                     compileObject.HashClass = hashCrs;
                     InstanceClassHash.put(hashCrs, compileObject); // запоминаем созданный экземпляр класса
@@ -427,21 +418,16 @@ public class JavaStrExecut {
                 } else if (compileObject.methods.containsKey("page")) {
                     meth = compileObject.methods.get("page");
                 }
-                //todo: старый вариант получения метода по массиву вхолдных аргументов (кандидат на удаление)
-                // Class[] argTypes = new Class[]{ru.miacomsoft.EasyWebServer.HttpExchange.class};
-                // Method meth = compileObject.ClassNat.getMethod(methodName, argTypes);   // получаем метод по имени и типам входящих переменных
-                // --------------------------------------------------------------------
-                if (meth!=null) {
+                if (meth != null) {
                     byte[] messageBytes = (byte[]) meth.invoke(compileObject.ObjectInstance, query); // запуск метода на выполнение
                     if (messageBytes == null)
                         return;                                                      // если возвращается NULL тогда ничего отправлять ненадо
                     query.sendHtml(new String(messageBytes));
                 } else {
-                    query.sendHtml("Метод для запуска не найден "+query.requestPath);
+                    query.sendHtml("Метод для запуска не найден " + query.requestPath);
                 }
             } else {
                 // Если при компиляции произошла ошибка, тогда отправляем подробности клиенту в браузер
-                // query.mimeType = "text/plain";
                 query.mimeType = "text/html";
                 query.sendHtml(parseErrorCompile(infoCompile));
             }
@@ -463,16 +449,14 @@ public class JavaStrExecut {
                 query.mimeType = "text/html";
                 JavaTerminalClassObject term = ServerResource.pagesJavaTerminalClass.get(query.requestPath);
                 Method meth = term.method;   // получаем метод по имени и типам входящих переменных
-                byte[] messageBytes = new byte[0]; // запуск метода на выполнение
+                byte[] messageBytes; // запуск метода на выполнение
                 try {
                     messageBytes = (byte[]) meth.invoke(term.ObjectInstance, query);
                 } catch (IllegalAccessException e) {
-                    query.write(("IllegalAccessException ERROR: " + e.toString()).getBytes());
-                    // throw new RuntimeException(e);
+                    query.write(("IllegalAccessException ERROR: " + e).getBytes());
                     return false;
                 } catch (InvocationTargetException e) {
-                    query.write(("InvocationTargetException ERROR: " + e.toString()).getBytes());
-                    // throw new RuntimeException(e);
+                    query.write(("InvocationTargetException ERROR: " + e).getBytes());
                     return false;
                 }
                 if (messageBytes != null) {
@@ -485,7 +469,7 @@ public class JavaStrExecut {
                 if (compileFile(ServerConstant.config.WEBAPP_DIR, query.requestPath, infoCompile, debugMode)) {
                     query.mimeType = "text/html";
                     CompileObject compileObject = (CompileObject) InstanceClassName.get(query.requestPath);
-                    Class[] argTypes = new Class[]{HttpExchange.class};
+                    Class<?>[] argTypes = new Class[]{HttpExchange.class};
                     Method meth = compileObject.ClassNat.getMethod("onTerminal", argTypes);   // получаем метод по имени и типам входящих переменных
                     byte[] messageBytes = (byte[]) meth.invoke(compileObject.ObjectInstance, query); // запуск метода на выполнение
                     if (messageBytes == null)
@@ -550,7 +534,6 @@ public class JavaStrExecut {
             }
             for (int i = 0; i < arrError.length(); i++) {
                 JSONObject objError = arrError.getJSONObject(i);
-                // "LineNumber"
                 StringBuffer dstTmpError = new StringBuffer();
                 dstTmpError.append(srcCode.substring(0, objError.getInt("StartPosition"))); // фрагменьт кода до обшибки
                 if (objError.getInt("StartPosition") == objError.getInt("EndPosition")) {
@@ -594,7 +577,7 @@ public class JavaStrExecut {
     public void runJavaComponent(HttpExchange query) {
         String classNameCmp = query.requestPath.substring(0, query.requestPath.length() - ".component".length()).replaceAll("/", ".");
         try {
-            Class[] argTypes = new Class[]{HttpExchange.class};
+            Class<?>[] argTypes = new Class[]{HttpExchange.class};
             Class<?> classNat = Class.forName(classNameCmp);
             Method meth = classNat.getMethod("onPage", argTypes);
             byte[] messageBytes = (byte[]) meth.invoke(null, query); // запуск мектода на выполнение
@@ -607,9 +590,10 @@ public class JavaStrExecut {
             System.err.println(e.getClass().getName() + ": " + e.getMessage());
         }
     }
-    public void runJavaDataset(String classNameCmp,HttpExchange query) {
+
+    public void runJavaDataset(String classNameCmp, HttpExchange query) {
         try {
-            Class[] argTypes = new Class[]{HttpExchange.class};
+            Class<?>[] argTypes = new Class[]{HttpExchange.class};
             Class<?> classNat = Class.forName(classNameCmp);
             Method meth = classNat.getMethod("onPage", argTypes);
             byte[] messageBytes = (byte[]) meth.invoke(null, query); // запуск мектода на выполнение
@@ -726,16 +710,16 @@ public class JavaStrExecut {
      * @param name
      * @param classLoader
      */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public boolean compileMemoryMemory(String src, String name, SpecialClassLoader classLoader, ArrayList<String> jarResourse, JSONObject info) {
         boolean resultColl = true;
         if (info == null) info = new JSONObject();
         if (jarResourse == null) jarResourse = new ArrayList<>();
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        DiagnosticCollector<JavaFileObject> diacol = new DiagnosticCollector<JavaFileObject>(); // Объект в котором  хрониться  информация о процессе компиляции
+        DiagnosticCollector<JavaFileObject> diacol = new DiagnosticCollector<>(); // Объект в котором хрониться информация о процессе компиляции
         StandardJavaFileManager standartFileManager = compiler.getStandardFileManager(diacol, null, null);
         SpecialJavaFileManager fileManager = new SpecialJavaFileManager(standartFileManager, classLoader);
-        List<String> optionList = new ArrayList<String>();
-        // optionList.addAll(Arrays.asList("-classpath", "D:\\JavaProject\\HttpServer-JAVA\\lib\\json-20230227.jar;asdasdasd;"));
+        List<String> optionList = new ArrayList<>();
         for (String libJaR : ServerConstant.config.LIB_JAR) {
             if (libJaR.indexOf(File.separator) == -1) {
                 jarResourse.add(libJaR);
@@ -743,7 +727,7 @@ public class JavaStrExecut {
                 jarResourse.add(ServerConstant.config.LIB_DIR + File.separator + libJaR);
             }
         }
-        Set<String> jarSet = new LinkedHashSet<String>(jarResourse);
+        Set<String> jarSet = new LinkedHashSet<>(jarResourse);
         StringBuffer libList = new StringBuffer(System.getProperty("java.class.path")); // получаем пут к библиотекам, которые подключены к проету
         for (String key : jarSet) {
             File file = new File(key);
@@ -757,26 +741,21 @@ public class JavaStrExecut {
         boolean status = compile.call();
         if (!status) {
             JSONArray listErrInfo = new JSONArray();
-            JSONObject errInfo = new JSONObject();
             List<Diagnostic<? extends JavaFileObject>> diagnostics = diacol.getDiagnostics();
             for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics) {
                 JSONObject errInfoOne = new JSONObject();
                 errInfoOne.put("Message", diagnostic.getMessage(null));
                 errInfoOne.put("Code", diagnostic.getCode());
                 errInfoOne.put("ColumnNumber", diagnostic.getColumnNumber());
-                errInfoOne.put("Kind", diagnostic.getKind());
+                errInfoOne.put("Kind", diagnostic.getKind().toString());
                 errInfoOne.put("StartPosition", diagnostic.getStartPosition());
                 errInfoOne.put("Position", diagnostic.getPosition());
                 errInfoOne.put("EndPosition", diagnostic.getEndPosition());
-                errInfoOne.put("LineNumber", diagnostic.getLineNumber());
                 errInfoOne.put("LineNumber", diagnostic.getLineNumber());
                 errInfoOne.put("FullInfo", diagnostic.getKind() + ":\t Line [" + diagnostic.getLineNumber() + "] \t Position [" + diagnostic.getPosition() + "]\t" + diagnostic.getMessage(Locale.ROOT) + "\n");
                 errInfoOne.put("ErrorString", diagnostic.toString());
                 listErrInfo.put(errInfoOne);
             }
-            errInfo.put("Src", src);
-            errInfo.put("SizeError", diacol.getDiagnostics().size());
-            errInfo.put("errors", listErrInfo);
             info.put("ERROR", listErrInfo);
             resultColl = false;
         }
@@ -832,7 +811,7 @@ class MemoryByteCode extends SimpleJavaFileObject {
     private ByteArrayOutputStream oStream;
 
     public MemoryByteCode(String name) {
-        super(URI.create("byte:///" + name.replace('/', '.') + Kind.CLASS.extension), Kind.CLASS);
+        super(URI.create("byte:///" + name.replace('.', '/') + Kind.CLASS.extension), Kind.CLASS);
     }
 
     public OutputStream openOutputStream() {

@@ -132,13 +132,50 @@ public class WebServer implements Runnable {
      * @param confPropValue
      * @return
      */
+    /**
+     * @param confPropName
+     * @param confPropValue
+     * @return
+     */
     public Boolean config(String confPropName, String confPropValue) {
         // Проверяем, является ли значение списком (содержит точку с запятой)
         if (confPropValue.contains(";")) {
             return handleListProperty(confPropName, confPropValue);
         }
+
+        // Специальная обработка для DATABASES
+        if (confPropName.startsWith("DATABASES.")) {
+            return handleDatabaseProperty(confPropName, confPropValue);
+        }
+
         return ServerConstant.config.setProp(confPropName, confPropValue);
     }
+    /**
+     * Обрабатывает свойства для множественных БД
+     */
+    private Boolean handleDatabaseProperty(String confPropName, String confPropValue) {
+        try {
+            // Формат: DATABASES.dbname
+            String[] parts = confPropName.split("\\.", 2);
+            if (parts.length != 2) {
+                return false;
+            }
+
+            String dbName = parts[1];
+            DatabaseConfig dbConfig = DatabaseConfig.parse(confPropValue);
+
+            if (dbConfig != null) {
+                ServerConstant.config.DATABASES.put(dbName, dbConfig);
+                System.out.println("Added database config: " + dbName + " -> " + dbConfig.getType());
+                return true;
+            }
+        } catch (Exception e) {
+            System.err.println("Error handling database property '" + confPropName + "': " + e.getMessage());
+        }
+
+        return false;
+    }
+
     /**
      * Обрабатывает свойства, которые являются списками (массивами)
      * @param confPropName имя свойства
