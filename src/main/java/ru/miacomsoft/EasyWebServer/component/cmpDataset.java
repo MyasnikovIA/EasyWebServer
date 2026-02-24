@@ -59,23 +59,30 @@ public class cmpDataset extends Base {
         this.initCmpType(element);
         System.out.println("---------------------------------");
         System.out.println("attrs: "+attrs);
-        String dbName = RemoveArrKeyRtrn(attrs, "DB", "default");
+        String dbName = RemoveArrKeyRtrn(attrs, "db", "default");
         String query_type = "sql";
         if (element.attributes().hasKey("query_type")) {
             query_type = element.attributes().get("query_type");
         }
+        // Получаем конфигурацию БД для определения типа
+        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("db") ? null : dbName.toLowerCase());
+
+        String pgSchema  = "public";
+        if (attrs.hasKey("schema")) {
+            pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
+        } else {
+            if (ServerConstant.config.DATABASES.containsKey(dbName.toLowerCase())) {
+                pgSchema = dbConfig.getSchema();
+            }
+        }
 
         // Получаем схему PostgreSQL (по умолчанию "public")
-        String pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
         attrsDst.add("pg_schema", pgSchema);
-
         System.out.println("ServerConstant.config.DATABASES: "+ServerConstant.config.DATABASES);
         System.out.println("dbName: "+dbName);
         System.out.println("pgSchema: "+pgSchema);
         System.out.println("---------------------------------");
 
-        // Получаем конфигурацию БД для определения типа
-        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("DB") ? null : dbName);
         String dbType = "jdbc"; // jdbc = postgresql по умолчанию
         boolean isOracle = false;
         if (dbConfig != null) {
@@ -397,7 +404,7 @@ public class cmpDataset extends Base {
                 result.put("ERROR", "Java function error: " + e.getMessage());
                 e.printStackTrace();
             }
-            
+
         } else if (query_type.equals("sql")) {
             // Для Oracle выполняем прямой SQL запрос
             if (isOracleQuery) {
