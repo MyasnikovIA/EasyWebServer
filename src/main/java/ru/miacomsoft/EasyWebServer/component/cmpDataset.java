@@ -59,7 +59,7 @@ public class cmpDataset extends Base {
         this.initCmpType(element);
         System.out.println("---------------------------------");
         System.out.println("attrs: "+attrs);
-        String dbName = RemoveArrKeyRtrn(attrs, "DB", "DB");
+        String dbName = RemoveArrKeyRtrn(attrs, "DB", "default");
         String query_type = "sql";
         if (element.attributes().hasKey("query_type")) {
             query_type = element.attributes().get("query_type");
@@ -197,8 +197,8 @@ public class cmpDataset extends Base {
 
                     if (!needToCreate) {
                         // Проверяем кэш наличия функции
-                        Boolean exists = functionExistsCache.get(fullFunctionName);
-                        if (exists == null) {
+                        Boolean exists = functionExistsCache.containsKey(fullFunctionName);
+                        if (!exists) {
                             // Если в кэше нет, делаем запрос к БД
                             exists = checkFunctionExistsInDB(fullFunctionName, pgSchema);
                             functionExistsCache.put(fullFunctionName, exists);
@@ -397,7 +397,7 @@ public class cmpDataset extends Base {
                 result.put("ERROR", "Java function error: " + e.getMessage());
                 e.printStackTrace();
             }
-
+            
         } else if (query_type.equals("sql")) {
             // Для Oracle выполняем прямой SQL запрос
             if (isOracleQuery) {
@@ -753,7 +753,34 @@ public class cmpDataset extends Base {
             return;
         }
 
-        Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
+        // Получаем имя БД из атрибута DB элемента
+        String dbName = element.hasAttr("DB") ? element.attr("DB") : "default";
+        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
+
+        Connection conn = null;
+
+        if (dbConfig != null) {
+            // Используем конфигурацию из DATABASES
+            try {
+                Class.forName("org.postgresql.Driver");
+                conn = DriverManager.getConnection(
+                        dbConfig.getJdbcUrl(),
+                        dbConfig.getUsername(),
+                        dbConfig.getPassword()
+                );
+                System.out.println("Connected to database using config: " + dbName + " (" + dbConfig.getJdbcUrl() + ")");
+            } catch (Exception e) {
+                System.err.println("Error connecting to database using config " + dbName + ": " + e.getMessage());
+                conn = null;
+            }
+        }
+
+        // Если не удалось подключиться через конфигурацию, пробуем стандартный способ
+        if (conn == null) {
+            conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
+            System.out.println("Connected to database using default credentials");
+        }
+
         if (conn == null) {
             System.err.println("Cannot connect to database for creating function");
             return;

@@ -220,8 +220,8 @@ public class cmpAction extends Base {
                     boolean needToCreate = debugMode; // В режиме debug всегда создаем
                     if (!needToCreate) {
                         // Проверяем кэш наличия функции
-                        Boolean exists = functionExistsCache.get(fullFunctionName);
-                        if (exists == null) {
+                        Boolean exists = functionExistsCache.containsKey(fullFunctionName);
+                        if (!exists) {
                             // Если в кэше нет, делаем запрос к БД
                             exists = checkFunctionExistsInDB(fullFunctionName, pgSchema);
                             functionExistsCache.put(fullFunctionName, exists);
@@ -1143,6 +1143,7 @@ public class cmpAction extends Base {
     }
 
     // Исправленный метод createSQLFunctionPG - поддержка определения типа и преобразования
+    // Исправленный метод createSQLFunctionPG - поддержка определения типа и преобразования
     private void createSQLFunctionPG(String functionName, String schema, Element element, String fileName, boolean debugMode) {
         // Очищаем имя функции от недопустимых символов
         String cleanFunctionName = functionName;
@@ -1161,7 +1162,34 @@ public class cmpAction extends Base {
             return;
         }
 
-        Connection conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
+        // Получаем имя БД из атрибута DB элемента
+        String dbName = element.hasAttr("DB") ? element.attr("DB") : "default";
+        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
+
+        Connection conn = null;
+
+        if (dbConfig != null) {
+            // Используем конфигурацию из DATABASES
+            try {
+                Class.forName("org.postgresql.Driver");
+                conn = DriverManager.getConnection(
+                        dbConfig.getJdbcUrl(),
+                        dbConfig.getUsername(),
+                        dbConfig.getPassword()
+                );
+                System.out.println("Connected to database using config: " + dbName + " (" + dbConfig.getJdbcUrl() + ")");
+            } catch (Exception e) {
+                System.err.println("Error connecting to database using config " + dbName + ": " + e.getMessage());
+                conn = null;
+            }
+        }
+
+        // Если не удалось подключиться через конфигурацию, пробуем стандартный способ
+        if (conn == null) {
+            conn = getConnect(ServerConstant.config.DATABASE_USER_NAME, ServerConstant.config.DATABASE_USER_PASS);
+            System.out.println("Connected to database using default credentials");
+        }
+
         if (conn == null) {
             System.err.println("Cannot connect to database for creating procedure");
             return;
