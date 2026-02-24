@@ -15,12 +15,15 @@ import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.DriverManager;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public class HttpExchange {
     public Socket socket;
@@ -54,6 +57,9 @@ public class HttpExchange {
     public static final Map<String, HttpExchange> DevList = new ConcurrentHashMap<>();
     public static final Map<String, String> MESSAGE_LIST = new ConcurrentHashMap<>();
     public static final Map<String, List<String>> BROADCAST_MESSAGE_LIST = new ConcurrentHashMap<>();
+
+    // Кэш для PreparedStatement на уровне сессии
+    private final Map<String, Object> statementCache = new ConcurrentHashMap<>();
 
     public HttpExchange(Socket socket, Map<String, Object> session) throws IOException, JSONException {
         this.SHARE.put("server", "WebServerLite");
@@ -385,7 +391,8 @@ public class HttpExchange {
     public JSONArray SQL(String sql, String dbName) {
         JSONArray result = new JSONArray();
         Connection conn = null;
-         DatabaseConfig dbConfig = getDatabaseConfig(dbName);
+        DatabaseConfig dbConfig = getDatabaseConfig(dbName);
+
         try {
             // Проверяем наличие сессии и DATABASE
             if (session == null) {
@@ -408,10 +415,18 @@ public class HttpExchange {
             // Проверяем и создаем схему если нужно
             ensureSchemaExists(conn, sql, dbConfig);
 
-            // Выполняем SQL запрос
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(sql)) {
+            // Используем кэшированный Statement если возможно
+            String cacheKey = sql.hashCode() + "|" + dbName;
+            Statement stmt = (Statement) statementCache.get(cacheKey);
 
+            if (stmt == null || stmt.isClosed()) {
+                stmt = conn.createStatement();
+                // Оптимизация для больших результатов
+                stmt.setFetchSize(100);
+                statementCache.put(cacheKey, stmt);
+            }
+
+            try (ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
                     JSONObject row = new JSONObject();
                     for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
@@ -421,7 +436,6 @@ public class HttpExchange {
                     }
                     result.put(row);
                 }
-
             }
 
         } catch (SQLException | JSONException e) {
@@ -498,12 +512,16 @@ public class HttpExchange {
                         dbConfig.getPassword()
                 );
             } else {
-                // PostgreSQL подключение
-                newConn = DriverManager.getConnection(
-                        dbConfig.getJdbcUrl(),
-                        dbConfig.getUsername(),
-                        dbConfig.getPassword()
-                );
+                // PostgreSQL подключение с оптимизированными параметрами
+                java.util.Properties props = new java.util.Properties();
+                props.setProperty("user", dbConfig.getUsername());
+                props.setProperty("password", dbConfig.getPassword());
+                props.setProperty("socketTimeout", "30");
+                props.setProperty("connectTimeout", "10");
+                props.setProperty("tcpKeepAlive", "true");
+                props.setProperty("prepareThreshold", "3"); // Кэширование prepared statements
+
+                newConn = DriverManager.getConnection(dbConfig.getJdbcUrl(), props);
 
                 // Устанавливаем схему если указана
                 if (dbConfig.getSchema() != null && !dbConfig.getSchema().isEmpty()) {
@@ -512,6 +530,9 @@ public class HttpExchange {
                     }
                 }
             }
+
+            // Оптимизация для пула соединений
+            newConn.setAutoCommit(false);
 
             // Кэшируем подключение
             dbConfig.setConnection(newConn);
@@ -578,6 +599,7 @@ public class HttpExchange {
                             // Схема не существует - создаем её
                             String createSql = "CREATE SCHEMA IF NOT EXISTS \"" + schemaName + "\"";
                             stmt.executeUpdate(createSql);
+                            conn.commit();
                             System.out.println("Created schema: " + schemaName);
                             return true;
                         }
@@ -672,5 +694,174 @@ public class HttpExchange {
             return (boolean) session.get("debug_mode");
         }
         return false;
+    }
+
+    /**
+     * Асинхронное выполнение SQL запроса
+     * @param sql SQL запрос
+     * @param dbName имя БД (опционально)
+     * @return CompletableFuture с результатом
+     */
+    public CompletableFuture<JSONArray> SQLAsync(String sql, String dbName) {
+        return CompletableFuture.supplyAsync(() -> SQL(sql, dbName));
+    }
+
+    /**
+     * Асинхронное выполнение SQL запроса с таймаутом
+     */
+    public CompletableFuture<JSONArray> SQLAsyncWithTimeout(
+            String sql,
+            String dbName,
+            long timeout,
+            TimeUnit unit) {
+
+        CompletableFuture<JSONArray> future = CompletableFuture.supplyAsync(
+                () -> SQL(sql, dbName)
+        );
+
+        return future.orTimeout(timeout, unit)
+                .exceptionally(throwable -> {
+                    JSONArray error = new JSONArray();
+                    JSONObject errObj = new JSONObject();
+                    errObj.put("error", "Query timeout after " + timeout + " " + unit);
+                    errObj.put("sql", sql);
+                    error.put(errObj);
+                    return error;
+                });
+    }
+
+    /**
+     * Параллельное выполнение нескольких SQL запросов
+     */
+    public CompletableFuture<Map<String, JSONArray>> executeParallel(
+            Map<String, String> queries,
+            String dbName) {
+
+        Map<String, CompletableFuture<JSONArray>> futures = new HashMap<>();
+
+        for (Map.Entry<String, String> entry : queries.entrySet()) {
+            futures.put(entry.getKey(),
+                    CompletableFuture.supplyAsync(() -> SQL(entry.getValue(), dbName))
+            );
+        }
+
+        return CompletableFuture.allOf(
+                futures.values().toArray(new CompletableFuture[0])
+        ).thenApply(v -> {
+            Map<String, JSONArray> results = new HashMap<>();
+            futures.forEach((key, future) -> results.put(key, future.join()));
+            return results;
+        });
+    }
+
+    /**
+     * Потоковая обработка результатов SQL запроса
+     * @param sql SQL запрос
+     * @param dbName имя БД
+     * @param batchSize размер пакета
+     * @param consumer потребитель строк
+     */
+    public void streamSQL(String sql, String dbName, int batchSize, Consumer<JSONObject> consumer) {
+        Connection conn = null;
+        Statement stmt = null;
+        ResultSet rs = null;
+
+        try {
+            DatabaseConfig dbConfig = getDatabaseConfig(dbName);
+            if (dbConfig == null) {
+                System.err.println("No database configuration found for: " + dbName);
+                return;
+            }
+
+            conn = getDatabaseConnection(dbConfig);
+            if (conn == null) {
+                System.err.println("Failed to connect to database");
+                return;
+            }
+
+            // Оптимизация для потоковой передачи
+            stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+            stmt.setFetchSize(batchSize);
+
+            rs = stmt.executeQuery(sql);
+
+            int rowCount = 0;
+            while (rs.next()) {
+                JSONObject row = new JSONObject();
+                for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
+                    String colName = rs.getMetaData().getColumnName(i);
+                    Object value = rs.getObject(i);
+                    row.put(colName, value == null ? "null" : value);
+                }
+                consumer.accept(row);
+                rowCount++;
+
+                // Периодический коммит для очень больших наборов
+                if (rowCount % 10000 == 0) {
+                    conn.commit();
+                }
+            }
+
+            conn.commit();
+
+        } catch (SQLException e) {
+            System.err.println("Streaming SQL error: " + e.getMessage());
+        } finally {
+            try { if (rs != null) rs.close(); } catch (SQLException ignored) {}
+            try { if (stmt != null) stmt.close(); } catch (SQLException ignored) {}
+            // Connection возвращается в пул через PostgreQuery
+        }
+    }
+
+    /**
+     * Экспорт результатов SQL запроса в CSV
+     */
+    public void exportToCSV(String sql, String dbName, OutputStream outputStream, char delimiter) {
+        try (PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))) {
+
+            final boolean[] headerWritten = {false};
+            final String[][] columnNames = {null};
+
+            streamSQL(sql, dbName, 1000, row -> {
+                if (!headerWritten[0]) {
+                    columnNames[0] = row.keySet().toArray(new String[0]);
+                    StringBuilder header = new StringBuilder();
+                    for (int i = 0; i < columnNames[0].length; i++) {
+                        if (i > 0) header.append(delimiter);
+                        header.append('"').append(escapeCSV(columnNames[0][i])).append('"');
+                    }
+                    writer.println(header);
+                    headerWritten[0] = true;
+                }
+
+                StringBuilder line = new StringBuilder();
+                for (int i = 0; i < columnNames[0].length; i++) {
+                    if (i > 0) line.append(delimiter);
+                    String value = row.optString(columnNames[0][i], "");
+                    line.append('"').append(escapeCSV(value)).append('"');
+                }
+                writer.println(line);
+            });
+
+            writer.flush();
+        }
+    }
+
+    private String escapeCSV(String s) {
+        return s.replace("\"", "\"\"");
+    }
+
+    /**
+     * Очистка кэша statement'ов при завершении
+     */
+    public void cleanup() {
+        for (Object stmt : statementCache.values()) {
+            try {
+                if (stmt instanceof Statement) {
+                    ((Statement) stmt).close();
+                }
+            } catch (SQLException ignored) {}
+        }
+        statementCache.clear();
     }
 }

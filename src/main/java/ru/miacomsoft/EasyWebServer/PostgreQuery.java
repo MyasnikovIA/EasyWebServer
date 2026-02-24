@@ -4,11 +4,17 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 import org.json.JSONException;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.sql.Date;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * Оптимизированный класс для работы с PostgreSQL
@@ -32,7 +38,8 @@ public class PostgreQuery {
     private static boolean DEBUG = false;
 
     // Размер пула соединений по умолчанию
-    private static final int DEFAULT_POOL_SIZE = 10;
+    private static final int DEFAULT_MIN_POOL_SIZE = 2;
+    private static final int DEFAULT_MAX_POOL_SIZE = 20;
 
     // Таймаут получения соединения из пула
     private static final int CONNECTION_TIMEOUT = 5000;
@@ -42,6 +49,35 @@ public class PostgreQuery {
 
     // Статическая карта процедур (сохраняем для обратной совместимости)
     public static HashMap<String, HashMap<String, Object>> procedureList = new HashMap<>();
+
+
+    private static final ExecutorService asyncExecutor =
+            Executors.newFixedThreadPool(
+                    Math.max(2, Runtime.getRuntime().availableProcessors() * 2)
+            );
+
+    private static final Map<String, CompletableFuture<JSONArray>> asyncQueryCache =
+            new ConcurrentHashMap<>();
+
+    private static final ScheduledExecutorService cacheCleaner =
+            Executors.newSingleThreadScheduledExecutor();
+
+
+    private static final Map<String, CachedResultSetMeta> resultSetMetaCache =
+            new ConcurrentHashMap<>();
+
+    static {
+        // Очистка кэша асинхронных запросов каждые 5 минут
+        cacheCleaner.scheduleAtFixedRate(() -> {
+            asyncQueryCache.clear();
+        }, 5, 5, TimeUnit.MINUTES);
+
+        // Очистка кэша метаданных каждые 10 минут
+        cacheCleaner.scheduleAtFixedRate(() -> {
+            resultSetMetaCache.entrySet().removeIf(entry ->
+                    !entry.getValue().isValid());
+        }, 10, 10, TimeUnit.MINUTES);
+    }
 
     /**
      * Установка режима отладки
@@ -82,7 +118,8 @@ public class PostgreQuery {
             synchronized (PostgreQuery.class) {
                 pool = connectionPools.get(poolKey);
                 if (pool == null) {
-                    pool = new ConnectionPool(dbConfig, userName, userPass, DEFAULT_POOL_SIZE);
+                    pool = new ConnectionPool(dbConfig, userName, userPass,
+                            DEFAULT_MIN_POOL_SIZE, DEFAULT_MAX_POOL_SIZE);
                     connectionPools.put(poolKey, pool);
                 }
             }
@@ -109,7 +146,8 @@ public class PostgreQuery {
             synchronized (PostgreQuery.class) {
                 pool = connectionPools.get(poolKey);
                 if (pool == null) {
-                    pool = new ConnectionPool(url, userName, userPass, DEFAULT_POOL_SIZE);
+                    pool = new ConnectionPool(url, userName, userPass,
+                            DEFAULT_MIN_POOL_SIZE, DEFAULT_MAX_POOL_SIZE);
                     connectionPools.put(poolKey, pool);
                 }
             }
@@ -132,7 +170,6 @@ public class PostgreQuery {
         try {
             Class.forName("org.postgresql.Driver");
             Connection conn = DriverManager.getConnection(url, userName, userPass);
-            // Оптимальные настройки для PostgreSQL
             conn.setAutoCommit(false);
             return conn;
         } catch (Exception e) {
@@ -156,7 +193,6 @@ public class PostgreQuery {
             );
             conn.setAutoCommit(false);
 
-            // Устанавливаем схему если указана
             if (dbConfig.getSchema() != null && !dbConfig.getSchema().isEmpty()) {
                 try (Statement stmt = conn.createStatement()) {
                     stmt.execute("SET search_path TO '" + dbConfig.getSchema() + "'");
@@ -386,7 +422,6 @@ public class PostgreQuery {
         for (int i = 0; i < sql.length(); i++) {
             char c = sql.charAt(i);
 
-            // Обработка кавычек
             if ((c == '\'' || c == '"') && (i == 0 || sql.charAt(i - 1) != '\\')) {
                 if (!inQuote && !inDollarQuote) {
                     inQuote = true;
@@ -396,7 +431,6 @@ public class PostgreQuery {
                 }
             }
 
-            // Обработка долларовых кавычек для функций PostgreSQL
             if (c == '$' && i + 1 < sql.length() && Character.isLetter(sql.charAt(i + 1))) {
                 inDollarQuote = !inDollarQuote;
             }
@@ -468,28 +502,28 @@ public class PostgreQuery {
     }
 
     /**
-     * Оптимизированное преобразование ResultSet в JSONArray
+     * Оптимизированное преобразование ResultSet в JSONArray с кэшированием метаданных
      */
     private static JSONArray resultSetToJSONOptimized(ResultSet rs) throws SQLException {
-        JSONArray result = new JSONArray();
         ResultSetMetaData metaData = rs.getMetaData();
-        int columnCount = metaData.getColumnCount();
+        String cacheKey = generateMetaCacheKey(metaData);
 
-        String[] columnNames = new String[columnCount];
-        int[] columnTypes = new int[columnCount];
-
-        for (int i = 0; i < columnCount; i++) {
-            columnNames[i] = metaData.getColumnLabel(i + 1);
-            columnTypes[i] = metaData.getColumnType(i + 1);
+        CachedResultSetMeta cachedMeta = resultSetMetaCache.get(cacheKey);
+        if (cachedMeta == null || !cachedMeta.isValid()) {
+            cachedMeta = new CachedResultSetMeta(metaData);
+            resultSetMetaCache.put(cacheKey, cachedMeta);
         }
+
+        JSONArray result = new JSONArray();
+        int columnCount = cachedMeta.columnNames.length;
 
         while (rs.next()) {
             JSONObject row = new JSONObject();
             for (int i = 0; i < columnCount; i++) {
-                String columnName = columnNames[i];
-                int type = columnTypes[i];
+                String columnName = cachedMeta.columnNames[i];
+                int type = cachedMeta.columnTypes[i];
 
-                Object value = getValueByType(rs, i + 1, type);
+                Object value = getValueByTypeFast(rs, i + 1, type);
 
                 if (value == null) {
                     row.put(columnName, JSONObject.NULL);
@@ -504,9 +538,35 @@ public class PostgreQuery {
     }
 
     /**
-     * Получение значения по типу
+     * Генерация ключа кэша для метаданных
      */
-    private static Object getValueByType(ResultSet rs, int index, int type) throws SQLException {
+    private static String generateMetaCacheKey(ResultSetMetaData meta) throws SQLException {
+        StringBuilder key = new StringBuilder();
+        int count = meta.getColumnCount();
+
+        for (int i = 1; i <= count; i++) {
+            if (i > 1) key.append('|');
+            key.append(meta.getColumnLabel(i))
+                    .append(':')
+                    .append(meta.getColumnType(i));
+
+            try {
+                String tableName = meta.getTableName(i);
+                if (tableName != null && !tableName.isEmpty()) {
+                    key.append('@').append(tableName);
+                }
+            } catch (SQLException e) {
+                // Игнорируем
+            }
+        }
+
+        return key.toString();
+    }
+
+    /**
+     * Быстрое получение значения по типу
+     */
+    private static Object getValueByTypeFast(ResultSet rs, int index, int type) throws SQLException {
         switch (type) {
             case Types.VARCHAR:
             case Types.CHAR:
@@ -514,10 +574,12 @@ public class PostgreQuery {
                 return rs.getString(index);
 
             case Types.INTEGER:
-                return rs.getInt(index);
+                int intVal = rs.getInt(index);
+                return rs.wasNull() ? null : intVal;
 
             case Types.BIGINT:
-                return rs.getLong(index);
+                long longVal = rs.getLong(index);
+                return rs.wasNull() ? null : longVal;
 
             case Types.NUMERIC:
             case Types.DECIMAL:
@@ -525,11 +587,13 @@ public class PostgreQuery {
 
             case Types.DOUBLE:
             case Types.FLOAT:
-                return rs.getDouble(index);
+                double doubleVal = rs.getDouble(index);
+                return rs.wasNull() ? null : doubleVal;
 
             case Types.BOOLEAN:
             case Types.BIT:
-                return rs.getBoolean(index);
+                boolean boolVal = rs.getBoolean(index);
+                return rs.wasNull() ? null : boolVal;
 
             case Types.DATE:
                 Date date = rs.getDate(index);
@@ -540,7 +604,6 @@ public class PostgreQuery {
                 return ts != null ? ts.toString() : null;
 
             case Types.OTHER:
-                // Для JSON/JSONB в PostgreSQL
                 Object obj = rs.getObject(index);
                 if (obj instanceof org.postgresql.util.PGobject) {
                     return ((org.postgresql.util.PGobject) obj).getValue();
@@ -563,6 +626,13 @@ public class PostgreQuery {
                 Object objDefault = rs.getObject(index);
                 return objDefault != null ? objDefault.toString() : null;
         }
+    }
+
+    /**
+     * Получение значения по типу (для обратной совместимости)
+     */
+    private static Object getValueByType(ResultSet rs, int index, int type) throws SQLException {
+        return getValueByTypeFast(rs, index, type);
     }
 
     /**
@@ -670,7 +740,6 @@ public class PostgreQuery {
         try {
             String procName = "clear_" + ServerConstant.config.APP_NAME + "_proc";
 
-            // Создаем процедуру очистки
             String createProc =
                     "CREATE OR REPLACE PROCEDURE " + procName + "() LANGUAGE plpgsql AS $$\n" +
                             "DECLARE\n" +
@@ -717,7 +786,7 @@ public class PostgreQuery {
 
         try {
             if (conn instanceof PooledConnection) {
-                conn.close(); // PooledConnection.close() возвращает в пул
+                conn.close();
             } else {
                 conn.close();
             }
@@ -735,7 +804,460 @@ public class PostgreQuery {
         }
     }
 
-    // ==================== Внутренние классы ====================
+    /**
+     * Предварительная загрузка метаданных для часто используемых таблиц
+     */
+    public static void preloadMetadata(String tableName, String userName, String userPass) {
+        Connection conn = null;
+        try {
+            conn = getConnect(userName, userPass);
+            if (conn == null) return;
+
+            String sql = "SELECT * FROM " + tableName + " LIMIT 0";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+
+                ResultSetMetaData meta = rs.getMetaData();
+                String cacheKey = generateMetaCacheKey(meta);
+                CachedResultSetMeta cachedMeta = new CachedResultSetMeta(meta);
+                resultSetMetaCache.put(cacheKey, cachedMeta);
+
+                if (DEBUG) {
+                    System.out.println("Preloaded metadata for table: " + tableName);
+                }
+            }
+        } catch (SQLException e) {
+            if (DEBUG) {
+                System.err.println("Failed to preload metadata for " + tableName +
+                        ": " + e.getMessage());
+            }
+        } finally {
+            releaseConnection(conn);
+        }
+    }
+
+    /**
+     * Инвалидация кэша метаданных для таблицы
+     */
+    public static void invalidateMetadata(String tableName) {
+        resultSetMetaCache.entrySet().removeIf(entry ->
+                tableName.equals(entry.getValue().tableName));
+
+        if (DEBUG) {
+            System.out.println("Invalidated metadata cache for table: " + tableName);
+        }
+    }
+
+    /**
+     * Получение статистики кэша метаданных
+     */
+    public static JSONObject getMetadataCacheStats() {
+        JSONObject stats = new JSONObject();
+        stats.put("size", resultSetMetaCache.size());
+
+        long validCount = resultSetMetaCache.values().stream()
+                .filter(CachedResultSetMeta::isValid)
+                .count();
+        stats.put("valid_entries", validCount);
+
+        JSONArray tables = new JSONArray();
+        resultSetMetaCache.values().stream()
+                .filter(meta -> meta.tableName != null)
+                .map(meta -> meta.tableName)
+                .distinct()
+                .forEach(tables::put);
+        stats.put("cached_tables", tables);
+
+        return stats;
+    }
+
+
+    /**
+     * Асинхронное выполнение запроса с кэшированием результатов
+     */
+    public static CompletableFuture<JSONArray> executeQueryAsync(
+            String sql,
+            Map<String, Object> params,
+            String userName,
+            String userPass,
+            long cacheTimeMs) {
+
+        String cacheKey = sql + "|" + (params != null ? params.hashCode() : "") +
+                "|" + userName;
+
+        if (cacheTimeMs > 0 && asyncQueryCache.containsKey(cacheKey)) {
+            CompletableFuture<JSONArray> cached = asyncQueryCache.get(cacheKey);
+            if (!cached.isCompletedExceptionally()) {
+                return cached;
+            }
+        }
+
+        CompletableFuture<JSONArray> future = CompletableFuture.supplyAsync(() ->
+                executeQuery(sql, params, userName, userPass), asyncExecutor
+        ).thenApply(result -> {
+            if (result != null && result.length() > 0 &&
+                    result.optJSONObject(0) != null &&
+                    result.getJSONObject(0).has("error")) {
+                throw new RuntimeException(result.getJSONObject(0).getString("error"));
+            }
+            return result;
+        });
+
+        if (cacheTimeMs > 0) {
+            asyncQueryCache.put(cacheKey, future);
+            future.thenRun(() -> {
+                cacheCleaner.schedule(() -> {
+                    asyncQueryCache.remove(cacheKey, future);
+                }, cacheTimeMs, TimeUnit.MILLISECONDS);
+            });
+        }
+
+        return future;
+    }
+
+    /**
+     * Асинхронное выполнение нескольких запросов параллельно
+     */
+    public static CompletableFuture<List<JSONArray>> executeParallelQueries(
+            List<QueryTask> queries,
+            String userName,
+            String userPass) {
+
+        List<CompletableFuture<JSONArray>> futures = new ArrayList<>();
+
+        for (QueryTask task : queries) {
+            futures.add(CompletableFuture.supplyAsync(() ->
+                            executeQuery(task.sql, task.params, userName, userPass),
+                    asyncExecutor
+            ));
+        }
+
+        return CompletableFuture.allOf(
+                futures.toArray(new CompletableFuture[0])
+        ).thenApply(v ->
+                futures.stream()
+                        .map(CompletableFuture::join)
+                        .collect(Collectors.toList())
+        );
+    }
+
+    /**
+     * Класс для описания задачи запроса
+     */
+    public static class QueryTask {
+        public final String sql;
+        public final Map<String, Object> params;
+
+        public QueryTask(String sql, Map<String, Object> params) {
+            this.sql = sql;
+            this.params = params;
+        }
+    }
+
+    /**
+     * Асинхронное выполнение с таймаутом
+     */
+    public static CompletableFuture<JSONArray> executeQueryWithTimeout(
+            String sql,
+            Map<String, Object> params,
+            String userName,
+            String userPass,
+            long timeout,
+            TimeUnit unit) {
+
+        CompletableFuture<JSONArray> future = CompletableFuture.supplyAsync(() ->
+                executeQuery(sql, params, userName, userPass), asyncExecutor
+        );
+
+        return future.orTimeout(timeout, unit)
+                .exceptionally(throwable -> {
+                    if (throwable instanceof TimeoutException) {
+                        JSONArray error = new JSONArray();
+                        JSONObject errObj = new JSONObject();
+                        errObj.put("error", "Query timeout after " + timeout + " " + unit);
+                        error.put(errObj);
+                        return error;
+                    }
+                    return createErrorResult(throwable.getMessage());
+                });
+    }
+
+    /**
+     * Асинхронное выполнение update операции
+     */
+    public static CompletableFuture<Integer> executeUpdateAsync(
+            String sql,
+            Map<String, Object> params,
+            String userName,
+            String userPass) {
+
+        return CompletableFuture.supplyAsync(() ->
+                executeUpdate(sql, params, userName, userPass), asyncExecutor
+        );
+    }
+
+    /**
+     * Закрытие пула асинхронных запросов
+     */
+    public static void shutdownAsyncExecutor() {
+        asyncExecutor.shutdown();
+        cacheCleaner.shutdown();
+        try {
+            if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                asyncExecutor.shutdownNow();
+            }
+            if (!cacheCleaner.awaitTermination(5, TimeUnit.SECONDS)) {
+                cacheCleaner.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            asyncExecutor.shutdownNow();
+            cacheCleaner.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Потоковая передача результатов через Consumer
+     */
+    public static void streamQuery(
+            String sql,
+            Map<String, Object> params,
+            String userName,
+            String userPass,
+            int batchSize,
+            ResultSetConsumer consumer) {
+
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = getConnect(userName, userPass);
+            if (conn == null) {
+                consumer.onError("Database connection failed");
+                return;
+            }
+
+            conn.setAutoCommit(false);
+
+            pstmt = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY,
+                    ResultSet.CONCUR_READ_ONLY);
+            pstmt.setFetchSize(batchSize);
+
+            ParsedSql parsedSql = getParsedSql(sql);
+            if (params != null && !params.isEmpty()) {
+                setParametersOptimized(pstmt, parsedSql.paramNames, params);
+            }
+
+            rs = pstmt.executeQuery();
+
+            int rowCount = 0;
+            long startTime = System.currentTimeMillis();
+
+            while (rs.next()) {
+                JSONObject row = resultSetRowToJSONOptimized(rs);
+                consumer.accept(row, rowCount);
+                rowCount++;
+
+                if (rowCount % 10000 == 0) {
+                    conn.commit();
+
+                    if (DEBUG) {
+                        long elapsed = System.currentTimeMillis() - startTime;
+                        double rate = rowCount / (elapsed / 1000.0);
+                        System.out.printf("Streamed %d rows at %.2f rows/sec%n",
+                                rowCount, rate);
+                    }
+                }
+            }
+
+            conn.commit();
+            consumer.onComplete(rowCount);
+
+        } catch (SQLException e) {
+            consumer.onError(e.getMessage());
+            rollbackQuietly(conn);
+        } finally {
+            closeResources(rs, pstmt);
+            releaseConnection(conn);
+        }
+    }
+
+    /**
+     * Потоковая передача с пагинацией (курсорная навигация)
+     */
+    public static class StreamingCursor implements AutoCloseable {
+        private final Connection conn;
+        private final PreparedStatement pstmt;
+        private final ResultSet rs;
+        private final int batchSize;
+        private boolean hasMore = true;
+        private int totalRead = 0;
+
+        private StreamingCursor(Connection conn, PreparedStatement pstmt,
+                                ResultSet rs, int batchSize) {
+            this.conn = conn;
+            this.pstmt = pstmt;
+            this.rs = rs;
+            this.batchSize = batchSize;
+        }
+
+        public static StreamingCursor create(
+                String sql,
+                Map<String, Object> params,
+                String userName,
+                String userPass,
+                int batchSize) throws SQLException {
+
+            Connection conn = getConnect(userName, userPass);
+            if (conn == null) {
+                throw new SQLException("Database connection failed");
+            }
+
+            conn.setAutoCommit(false);
+
+            PreparedStatement pstmt = conn.prepareStatement(
+                    sql,
+                    ResultSet.TYPE_FORWARD_ONLY,
+                    ResultSet.CONCUR_READ_ONLY
+            );
+            pstmt.setFetchSize(batchSize);
+
+            ParsedSql parsedSql = getParsedSql(sql);
+            if (params != null && !params.isEmpty()) {
+                setParametersOptimized(pstmt, parsedSql.paramNames, params);
+            }
+
+            ResultSet rs = pstmt.executeQuery();
+
+            return new StreamingCursor(conn, pstmt, rs, batchSize);
+        }
+
+        public List<JSONObject> nextBatch() throws SQLException {
+            if (!hasMore) return Collections.emptyList();
+
+            List<JSONObject> batch = new ArrayList<>(batchSize);
+            int count = 0;
+
+            while (count < batchSize && rs.next()) {
+                JSONObject row = resultSetRowToJSONOptimized(rs);
+                batch.add(row);
+                count++;
+                totalRead++;
+            }
+
+            hasMore = !rs.isAfterLast() && count == batchSize;
+            return batch;
+        }
+
+        public boolean hasMore() {
+            return hasMore;
+        }
+
+        public int getTotalRead() {
+            return totalRead;
+        }
+
+        @Override
+        public void close() throws Exception {
+            closeResources(rs, pstmt);
+            releaseConnection(conn);
+        }
+    }
+
+    /**
+     * Утилита для экспорта больших результатов в CSV
+     */
+    public static void exportToCSV(
+            String sql,
+            Map<String, Object> params,
+            String userName,
+            String userPass,
+            OutputStream outputStream,
+            char delimiter) throws IOException {
+
+        try (PrintWriter writer = new PrintWriter(
+                new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))) {
+
+            streamQuery(sql, params, userName, userPass, 1000,
+                    new ResultSetConsumer() {
+                        private boolean headerWritten = false;
+                        private String[] columnNames;
+
+                        @Override
+                        public void accept(JSONObject row, int rowNum) {
+                            if (!headerWritten) {
+                                columnNames = row.keySet().toArray(new String[0]);
+                                StringBuilder header = new StringBuilder();
+                                for (int i = 0; i < columnNames.length; i++) {
+                                    if (i > 0) header.append(delimiter);
+                                    header.append('"')
+                                            .append(escapeCSV(columnNames[i]))
+                                            .append('"');
+                                }
+                                writer.println(header);
+                                headerWritten = true;
+                            }
+
+                            StringBuilder line = new StringBuilder();
+                            for (int i = 0; i < columnNames.length; i++) {
+                                if (i > 0) line.append(delimiter);
+                                String value = row.optString(columnNames[i], "");
+                                line.append('"').append(escapeCSV(value)).append('"');
+                            }
+                            writer.println(line);
+
+                            if (rowNum % 1000 == 0) {
+                                writer.flush();
+                            }
+                        }
+
+                        private String escapeCSV(String s) {
+                            return s.replace("\"", "\"\"");
+                        }
+                    }
+            );
+
+            writer.flush();
+        }
+    }
+
+    /**
+     * Интерфейс для потребителя результатов
+     */
+    public interface ResultSetConsumer {
+        void accept(JSONObject row, int rowNum);
+        default void onError(String error) {
+            System.err.println("Streaming error: " + error);
+        }
+        default void onComplete(int totalRows) {
+            if (DEBUG) System.out.println("Streaming complete: " + totalRows + " rows");
+        }
+    }
+
+    /**
+     * Оптимизированное преобразование одной строки ResultSet в JSONObject
+     */
+    private static JSONObject resultSetRowToJSONOptimized(ResultSet rs) throws SQLException {
+        ResultSetMetaData metaData = rs.getMetaData();
+        int columnCount = metaData.getColumnCount();
+
+        JSONObject row = new JSONObject();
+        for (int i = 1; i <= columnCount; i++) {
+            String columnName = metaData.getColumnLabel(i);
+            int type = metaData.getColumnType(i);
+
+            Object value = getValueByTypeFast(rs, i, type);
+
+            if (value == null) {
+                row.put(columnName, JSONObject.NULL);
+            } else {
+                row.put(columnName, value);
+            }
+        }
+        return row;
+    }
+
 
     /**
      * Класс для хранения разобранного SQL
@@ -751,7 +1273,7 @@ public class PostgreQuery {
     }
 
     /**
-     * Класс для хранения метаданных
+     * Класс для хранения метаданных таблиц
      */
     private static class TableMetadata {
         final String key;
@@ -782,7 +1304,43 @@ public class PostgreQuery {
         boolean isValid(Connection currentConn) throws SQLException {
             return connection == currentConn &&
                     !statement.isClosed() &&
-                    System.currentTimeMillis() - timestamp < 60000; // 1 минута
+                    System.currentTimeMillis() - timestamp < 60000;
+        }
+    }
+
+    /**
+     * Кэшированные метаданные ResultSet
+     */
+    private static class CachedResultSetMeta {
+        final String[] columnNames;
+        final int[] columnTypes;
+        final long timestamp;
+        final String tableName;
+
+        CachedResultSetMeta(ResultSetMetaData meta) throws SQLException {
+            int count = meta.getColumnCount();
+            this.columnNames = new String[count];
+            this.columnTypes = new int[count];
+
+            String table = null;
+            try {
+                if (count > 0) {
+                    table = meta.getTableName(1);
+                }
+            } catch (SQLException e) {
+                // Игнорируем
+            }
+            this.tableName = table;
+
+            for (int i = 0; i < count; i++) {
+                this.columnNames[i] = meta.getColumnLabel(i + 1);
+                this.columnTypes[i] = meta.getColumnType(i + 1);
+            }
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        boolean isValid() {
+            return System.currentTimeMillis() - timestamp < 300000; // 5 минут
         }
     }
 
@@ -803,49 +1361,211 @@ public class PostgreQuery {
         }
     }
 
-    /**
-     * Пул соединений
-     */
+
     private static class ConnectionPool {
         private final ArrayBlockingQueue<PooledConnection> pool;
         private final String url;
         private final String userName;
         private final String userPass;
         private final int maxSize;
-        private int created = 0;
+        private final AtomicInteger created = new AtomicInteger(0);
+        private final ScheduledExecutorService keepAliveService;
+        private final Map<Connection, Long> lastUsed = new ConcurrentHashMap<>();
 
-        ConnectionPool(String url, String userName, String userPass, int size) {
+        private static final int KEEPALIVE_INTERVAL = 30000;
+        private static final int MAX_IDLE_TIME = 300000;
+        private static final int VALIDATION_TIMEOUT = 3;
+
+        // Конструктор для URL
+        ConnectionPool(String url, String userName, String userPass, int minSize, int maxSize) {
             this.url = url;
             this.userName = userName;
             this.userPass = userPass;
-            this.maxSize = size;
-            this.pool = new ArrayBlockingQueue<>(size);
+            this.maxSize = maxSize;
+            this.pool = new ArrayBlockingQueue<>(maxSize);
 
-            // Создаем начальные соединения
-            for (int i = 0; i < Math.min(2, size); i++) {
+            for (int i = 0; i < minSize; i++) {
                 try {
-                    pool.offer(createPooledConnection());
-                    created++;
+                    PooledConnection conn = createPooledConnection();
+                    pool.offer(conn);
+                    lastUsed.put(conn, System.currentTimeMillis());
+                    created.incrementAndGet();
                 } catch (Exception e) {
                     if (DEBUG) {
-                        System.err.println("Failed to create initial connection: " + e.getMessage());
+                        System.err.println("Failed to create initial connection: " +
+                                e.getMessage());
                     }
                 }
             }
+
+            this.keepAliveService = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "DB-KeepAlive");
+                t.setDaemon(true);
+                return t;
+            });
+
+            this.keepAliveService.scheduleAtFixedRate(
+                    this::performKeepAlive,
+                    KEEPALIVE_INTERVAL,
+                    KEEPALIVE_INTERVAL,
+                    TimeUnit.MILLISECONDS
+            );
         }
 
-        ConnectionPool(DatabaseConfig dbConfig, String userName, String userPass, int size) {
-            this(dbConfig.getJdbcUrl(), userName, userPass, size);
+        // Конструктор для DatabaseConfig
+        ConnectionPool(DatabaseConfig dbConfig, String userName, String userPass, int minSize, int maxSize) {
+            this(dbConfig.getJdbcUrl(), userName, userPass, minSize, maxSize);
         }
 
         private PooledConnection createPooledConnection() throws SQLException {
             try {
                 Class.forName("org.postgresql.Driver");
-                Connection conn = DriverManager.getConnection(url, userName, userPass);
+
+                // Настраиваем свойства соединения для таймаутов
+                Properties props = new Properties();
+                props.setProperty("user", userName);
+                props.setProperty("password", userPass);
+                props.setProperty("socketTimeout", "30"); // 30 секунд
+                props.setProperty("connectTimeout", "10"); // 10 секунд
+                props.setProperty("tcpKeepAlive", "true");
+
+                Connection conn = DriverManager.getConnection(url, props);
                 conn.setAutoCommit(false);
+
+                // Выполняем простой запрос для инициализации соединения
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute("SELECT 1");
+                }
+
                 return new PooledConnection(conn, this);
+
             } catch (ClassNotFoundException e) {
                 throw new SQLException("PostgreSQL driver not found", e);
+            }
+        }
+
+        private void performKeepAlive() {
+            try {
+                List<PooledConnection> connections = new ArrayList<>();
+                pool.drainTo(connections);
+
+                long now = System.currentTimeMillis();
+
+                for (PooledConnection conn : connections) {
+                    try {
+                        Long lastUsedTime = lastUsed.get(conn);
+
+                        if (lastUsedTime != null &&
+                                now - lastUsedTime > MAX_IDLE_TIME) {
+                            try {
+                                conn.realClose();
+                                created.decrementAndGet();
+                            } catch (Exception e) {
+                                // Игнорируем
+                            }
+                            try {
+                                PooledConnection newConn = createPooledConnection();
+                                pool.offer(newConn);
+                                lastUsed.put(newConn, now);
+                                created.incrementAndGet();
+                            } catch (Exception e) {
+                                if (DEBUG) e.printStackTrace();
+                            }
+                            continue;
+                        }
+
+                        if (!isConnectionValid(conn)) {
+                            try {
+                                conn.realClose();
+                                created.decrementAndGet();
+                            } catch (Exception e) {
+                                // Игнорируем
+                            }
+
+                            try {
+                                PooledConnection newConn = createPooledConnection();
+                                pool.offer(newConn);
+                                lastUsed.put(newConn, now);
+                                created.incrementAndGet();
+                            } catch (Exception e) {
+                                if (DEBUG) e.printStackTrace();
+                            }
+                        } else {
+                            try {
+                                sendKeepAlive(conn);
+                                pool.offer(conn);
+                                lastUsed.put(conn, now);
+                            } catch (Exception e) {
+                                try {
+                                    conn.realClose();
+                                    created.decrementAndGet();
+                                } catch (Exception ex) {
+                                    // Игнорируем
+                                }
+
+                                try {
+                                    PooledConnection newConn = createPooledConnection();
+                                    pool.offer(newConn);
+                                    lastUsed.put(newConn, now);
+                                    created.incrementAndGet();
+                                } catch (Exception ex) {
+                                    if (DEBUG) ex.printStackTrace();
+                                }
+                            }
+                        }
+
+                    } catch (Exception e) {
+                        try {
+                            pool.offer(conn);
+                        } catch (Exception ex) {
+                            // Игнорируем
+                        }
+                    }
+                }
+
+                int currentSize = pool.size();
+                if (currentSize < maxSize && created.get() < maxSize) {
+                    int toCreate = Math.min(2, maxSize - currentSize);
+                    for (int i = 0; i < toCreate; i++) {
+                        try {
+                            if (created.get() < maxSize) {
+                                PooledConnection newConn = createPooledConnection();
+                                pool.offer(newConn);
+                                lastUsed.put(newConn, now);
+                                created.incrementAndGet();
+                            }
+                        } catch (Exception e) {
+                            break;
+                        }
+                    }
+                }
+
+            } catch (Exception e) {
+                if (DEBUG) e.printStackTrace();
+            }
+        }
+
+        private boolean isConnectionValid(Connection conn) {
+            try {
+                if (conn == null || conn.isClosed()) {
+                    return false;
+                }
+                return conn.isValid(VALIDATION_TIMEOUT);
+            } catch (SQLException e) {
+                return false;
+            }
+        }
+
+        private void sendKeepAlive(Connection conn) throws SQLException {
+            String keepaliveQuery = "SELECT 1";
+
+            if (conn instanceof org.postgresql.PGConnection) {
+                keepaliveQuery = "SET LOCAL lock_timeout = '1s'";
+            }
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.setQueryTimeout(2);
+                stmt.execute(keepaliveQuery);
             }
         }
 
@@ -854,32 +1574,59 @@ public class PostgreQuery {
 
             if (pooled != null) {
                 Connection conn = pooled.getConnection();
-                if (conn != null && !conn.isClosed()) {
+                if (conn != null && !conn.isClosed() && isConnectionValid(conn)) {
+                    lastUsed.put(pooled, System.currentTimeMillis());
                     return conn;
                 }
-                created--;
+                created.decrementAndGet();
             }
 
             synchronized (this) {
-                if (created < maxSize) {
-                    created++;
-                    return createPooledConnection().getConnection();
+                if (created.get() < maxSize) {
+                    created.incrementAndGet();
+                    PooledConnection newConn = createPooledConnection();
+                    lastUsed.put(newConn, System.currentTimeMillis());
+                    return newConn.getConnection();
                 }
             }
 
             pooled = pool.poll(CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS);
             if (pooled != null) {
-                return pooled.getConnection();
+                Connection conn = pooled.getConnection();
+                if (conn != null && !conn.isClosed() && isConnectionValid(conn)) {
+                    lastUsed.put(pooled, System.currentTimeMillis());
+                    return conn;
+                }
+                created.decrementAndGet();
             }
 
-            throw new SQLException("Connection timeout");
+            throw new SQLException("Connection timeout - no available connections");
         }
 
         boolean releaseConnection(Connection conn) {
             if (conn instanceof PooledConnection) {
-                return pool.offer((PooledConnection) conn);
+                PooledConnection pooled = (PooledConnection) conn;
+                lastUsed.put(pooled, System.currentTimeMillis());
+                return pool.offer(pooled);
             }
             return false;
+        }
+
+        void shutdown() {
+            keepAliveService.shutdown();
+            try {
+                keepAliveService.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            List<PooledConnection> connections = new ArrayList<>();
+            pool.drainTo(connections);
+            for (PooledConnection conn : connections) {
+                try {
+                    conn.realClose();
+                } catch (Exception ignored) {}
+            }
         }
     }
 
@@ -898,6 +1645,11 @@ public class PostgreQuery {
 
         Connection getConnection() {
             return closed ? null : this;
+        }
+
+        void realClose() throws SQLException {
+            closed = true;
+            delegate.close();
         }
 
         @Override
