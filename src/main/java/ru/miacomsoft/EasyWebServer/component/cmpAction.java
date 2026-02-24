@@ -24,9 +24,17 @@ public class cmpAction extends Base {
     // Кэш для хранения информации о существовании функций в БД
     private static Map<String, Boolean> functionExistsCache = new HashMap<>();
 
-    // Добавляем новые кэши
+    // Кэш для хранения информации о существовании схем в БД
     private static Map<String, Boolean> schemaExistsCache = new HashMap<>();
+
+    // Кэш для хранения информации о существовании баз данных
     private static Map<String, Boolean> databaseExistsCache = new HashMap<>();
+
+    // Временные метки для кэша БД
+    private static Map<String, Long> databaseCheckTimestamp = new HashMap<>();
+
+    // Время жизни кэша (60 секунд)
+    private static final long CACHE_TTL = 60000;
 
     // Добавляем поле для хранения режима отладки
     private boolean debugMode = false;
@@ -49,6 +57,386 @@ public class cmpAction extends Base {
             debugMode = Boolean.parseBoolean(doc.attr("debug_mode"));
         }
         initialize(doc, element);
+    }
+
+    /**
+     * Проверка существования базы данных PostgreSQL
+     */
+    private boolean checkDatabaseExists(String dbName, DatabaseConfig dbConfig) {
+        String cacheKey = "db:" + dbName;
+
+        // Проверяем кэш с учетом времени жизни
+        if (databaseExistsCache.containsKey(cacheKey)) {
+            Long timestamp = databaseCheckTimestamp.get(cacheKey);
+            if (timestamp != null && (System.currentTimeMillis() - timestamp) < CACHE_TTL) {
+                return databaseExistsCache.get(cacheKey);
+            }
+        }
+
+        Connection conn = null;
+        try {
+            // Создаем конфигурацию для подключения к системной БД postgres
+            DatabaseConfig adminConfig = createAdminDatabaseConfig(dbConfig, "postgres");
+
+            conn = getConnectionFromConfig(adminConfig);
+            if (conn == null) {
+                System.err.println("Cannot connect to postgres database for DB check");
+                return false;
+            }
+
+            // Проверяем существование базы данных
+            String sql = "SELECT 1 FROM pg_database WHERE datname = ?";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, dbName);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    boolean exists = rs.next();
+
+                    // Обновляем кэш
+                    databaseExistsCache.put(cacheKey, exists);
+                    databaseCheckTimestamp.put(cacheKey, System.currentTimeMillis());
+
+                    return exists;
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error checking database existence: " + e.getMessage());
+        } finally {
+            releaseConnection(conn);
+        }
+
+        // В случае ошибки считаем, что БД не существует, но не кэшируем надолго
+        databaseExistsCache.put(cacheKey, false);
+        databaseCheckTimestamp.put(cacheKey, System.currentTimeMillis());
+        return false;
+    }
+
+    /**
+     * Создание базы данных PostgreSQL (исправленная версия)
+     */
+    private boolean createDatabase(String dbName, DatabaseConfig dbConfig) {
+        Connection conn = null;
+        Statement stmt = null;
+        try {
+            // Подключаемся к системной БД postgres для создания новой БД
+            DatabaseConfig adminConfig = createAdminDatabaseConfig(dbConfig, "postgres");
+
+            // Получаем соединение и отключаем auto-commit для CREATE DATABASE
+            Class.forName(adminConfig.getDriver());
+            Properties props = new Properties();
+            props.setProperty("user", adminConfig.getUsername());
+            props.setProperty("password", adminConfig.getPassword());
+            props.setProperty("connectTimeout", "10");
+            props.setProperty("socketTimeout", "30");
+
+            conn = DriverManager.getConnection(adminConfig.getJdbcUrl(), props);
+
+            // Важно: CREATE DATABASE нельзя выполнять в транзакции
+            conn.setAutoCommit(true);
+
+            // Определяем владельца БД (обычно тот же пользователь)
+            String owner = dbConfig.getUsername();
+
+            // Экранируем имена
+            String escapedDbName = dbName.replace("\"", "\"\"");
+            String escapedOwner = owner.replace("\"", "\"\"");
+
+            // Создаем базу данных с правильной кодировкой
+            String sql = String.format(
+                    "CREATE DATABASE \"%s\" WITH OWNER = \"%s\" ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'C' TEMPLATE template0",
+                    escapedDbName, escapedOwner
+            );
+
+            System.out.println("Creating database with SQL: " + sql);
+
+            stmt = conn.createStatement();
+            stmt.executeUpdate(sql);
+
+            // Принудительно коммитим (хотя для CREATE DATABASE это не нужно)
+            try {
+                conn.commit();
+            } catch (SQLException e) {
+                // Игнорируем
+            }
+
+            // Обновляем кэш
+            String cacheKey = "db:" + dbName;
+            databaseExistsCache.put(cacheKey, true);
+            databaseCheckTimestamp.put(cacheKey, System.currentTimeMillis());
+
+            System.out.println("Database created successfully: " + dbName);
+            return true;
+
+        } catch (Exception e) {
+            System.err.println("Error creating database: " + e.getMessage());
+            e.printStackTrace();
+
+            // Если ошибка из-за того, что БД уже существует (race condition)
+            if (e.getMessage() != null &&
+                    (e.getMessage().contains("already exists") ||
+                            e.getMessage().contains("duplicate database"))) {
+                String cacheKey = "db:" + dbName;
+                databaseExistsCache.put(cacheKey, true);
+                databaseCheckTimestamp.put(cacheKey, System.currentTimeMillis());
+                System.out.println("Database already exists: " + dbName);
+                return true;
+            }
+
+            return false;
+        } finally {
+            // Закрываем ресурсы
+            if (stmt != null) {
+                try { stmt.close(); } catch (SQLException e) {}
+            }
+            if (conn != null) {
+                try { conn.close(); } catch (SQLException e) {}
+            }
+        }
+    }
+
+    /**
+     * Создание конфигурации для подключения к административной БД
+     */
+    private DatabaseConfig createAdminDatabaseConfig(DatabaseConfig sourceConfig, String adminDbName) {
+        DatabaseConfig adminConfig = new DatabaseConfig();
+        adminConfig.setType(sourceConfig.getType());
+        adminConfig.setDriver(sourceConfig.getDriver());
+        adminConfig.setHost(sourceConfig.getHost());
+        adminConfig.setPort(sourceConfig.getPort());
+        adminConfig.setDatabase(adminDbName);
+        adminConfig.setUsername(sourceConfig.getUsername());
+        adminConfig.setPassword(sourceConfig.getPassword());
+        adminConfig.setSchema("public");
+        return adminConfig;
+    }
+
+    /**
+     * Проверка существования схемы в PostgreSQL
+     */
+    private boolean checkSchemaExists(String schemaName, String dbName, DatabaseConfig dbConfig) {
+        String cacheKey = dbName + ":schema:" + schemaName;
+
+        if (schemaExistsCache.containsKey(cacheKey)) {
+            return schemaExistsCache.get(cacheKey);
+        }
+
+        Connection conn = null;
+        try {
+            conn = getConnectionFromConfig(dbConfig);
+            if (conn == null) {
+                System.err.println("Cannot connect to database for schema check: " + dbName);
+                return false;
+            }
+
+            String sql = "SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = ?)";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, schemaName);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        boolean exists = rs.getBoolean(1);
+                        schemaExistsCache.put(cacheKey, exists);
+                        return exists;
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error checking schema existence: " + e.getMessage());
+        } finally {
+            releaseConnection(conn);
+        }
+
+        schemaExistsCache.put(cacheKey, false);
+        return false;
+    }
+
+    /**
+     * Создание схемы в PostgreSQL
+     */
+    private boolean createSchema(String schemaName, String dbName, DatabaseConfig dbConfig) {
+        Connection conn = null;
+        try {
+            conn = getConnectionFromConfig(dbConfig);
+            if (conn == null) {
+                System.err.println("Cannot connect to database for schema creation: " + dbName);
+                return false;
+            }
+
+            // Определяем владельца схемы
+            String owner = dbConfig.getUsername();
+
+            String sql = String.format("CREATE SCHEMA IF NOT EXISTS \"%s\" AUTHORIZATION \"%s\"",
+                    schemaName.replace("\"", "\"\""),
+                    owner.replace("\"", "\"\""));
+
+            System.out.println("Creating schema with SQL: " + sql);
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate(sql);
+                conn.commit();
+
+                String cacheKey = dbName + ":schema:" + schemaName;
+                schemaExistsCache.put(cacheKey, true);
+
+                System.out.println("Schema created successfully: " + schemaName);
+                return true;
+            }
+        } catch (SQLException e) {
+            System.err.println("Error creating schema: " + e.getMessage());
+            rollbackQuietly(conn);
+        } finally {
+            releaseConnection(conn);
+        }
+        return false;
+    }
+
+    /**
+     * Проверка существования функции в PostgreSQL
+     */
+    private boolean checkFunctionExists(String fullFunctionName, String schemaName, String dbName, DatabaseConfig dbConfig) {
+        String cacheKey = dbName + ":func:" + fullFunctionName;
+
+        if (functionExistsCache.containsKey(cacheKey)) {
+            return functionExistsCache.get(cacheKey);
+        }
+
+        Connection conn = null;
+        try {
+            conn = getConnectionFromConfig(dbConfig);
+            if (conn == null) {
+                System.err.println("Cannot connect to database for function check: " + dbName);
+                return false;
+            }
+
+            String functionName = fullFunctionName;
+            if (fullFunctionName.contains(".")) {
+                functionName = fullFunctionName.substring(fullFunctionName.lastIndexOf('.') + 1);
+            }
+
+            String sql = "SELECT EXISTS(SELECT 1 FROM pg_proc p " +
+                    "JOIN pg_namespace n ON p.pronamespace = n.oid " +
+                    "WHERE n.nspname = ? AND p.proname = ?)";
+
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, schemaName);
+                pstmt.setString(2, functionName);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        boolean exists = rs.getBoolean(1);
+                        functionExistsCache.put(cacheKey, exists);
+                        return exists;
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error checking function existence: " + e.getMessage());
+        } finally {
+            releaseConnection(conn);
+        }
+
+        functionExistsCache.put(cacheKey, false);
+        return false;
+    }
+
+    /**
+     * Вспомогательный метод для получения соединения из конфигурации
+     */
+    private Connection getConnectionFromConfig(DatabaseConfig dbConfig) {
+        try {
+            Class.forName(dbConfig.getDriver());
+            Properties props = new Properties();
+            props.setProperty("user", dbConfig.getUsername());
+            props.setProperty("password", dbConfig.getPassword());
+            props.setProperty("connectTimeout", "10");
+            props.setProperty("socketTimeout", "30");
+
+            Connection conn = DriverManager.getConnection(dbConfig.getJdbcUrl(), props);
+            conn.setAutoCommit(false);
+            return conn;
+        } catch (Exception e) {
+            System.err.println("Error connecting to database: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Вспомогательный метод для освобождения соединения
+     */
+    private void releaseConnection(Connection conn) {
+        if (conn != null) {
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                // ignore
+            }
+        }
+    }
+
+    /**
+     * Вспомогательный метод для отката транзакции
+     */
+    private void rollbackQuietly(Connection conn) {
+        if (conn != null) {
+            try {
+                conn.rollback();
+            } catch (SQLException e) {
+                // ignore
+            }
+        }
+    }
+
+    /**
+     * Получает соединение с правильным search_path для схемы
+     */
+    private Connection getConnectionWithSchema(DatabaseConfig dbConfig, String schemaName) {
+        try {
+            Class.forName(dbConfig.getDriver());
+            Properties props = new Properties();
+            props.setProperty("user", dbConfig.getUsername());
+            props.setProperty("password", dbConfig.getPassword());
+            props.setProperty("connectTimeout", "10");
+            props.setProperty("socketTimeout", "30");
+
+            // Устанавливаем search_path при подключении
+            props.setProperty("currentSchema", schemaName);
+
+            Connection conn = DriverManager.getConnection(dbConfig.getJdbcUrl(), props);
+            conn.setAutoCommit(false);
+
+            // Дополнительно устанавливаем search_path через SQL
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("SET search_path TO " + schemaName + ", public");
+            }
+
+            return conn;
+        } catch (Exception e) {
+            System.err.println("Error connecting to database with schema: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Проверяет, доступна ли схема для текущего пользователя
+     */
+    private boolean checkSchemaAccessible(String schemaName, Connection conn) {
+        try {
+            String sql = "SELECT has_schema_privilege(current_user, ?, 'USAGE')";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, schemaName);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getBoolean(1);
+                    }
+                }
+            }
+
+            // Альтернативная проверка - пробуем установить search_path
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("SET search_path TO " + schemaName);
+                return true;
+            }
+        } catch (SQLException e) {
+            System.err.println("Schema " + schemaName + " is not accessible: " + e.getMessage());
+            return false;
+        }
     }
 
     // Общая логика инициализации
@@ -77,7 +465,82 @@ public class cmpAction extends Base {
         }
         attrsDst.add("pg_schema", pgSchema);
         String dbType = (dbConfig != null) ? dbConfig.getType() : "jdbc"; // jdbc = postgresql по умолчанию
+        boolean isOracle = (dbConfig != null) ? dbConfig.getType().equals("oci8") : false;
         attrsDst.add("db_type", dbType);
+
+        System.out.println("ServerConstant.config.DATABASES: " + ServerConstant.config.DATABASES);
+        System.out.println("dbName: " + dbName);
+        System.out.println("pgSchema: " + pgSchema);
+        System.out.println("dbType: " + dbType);
+        System.out.println("---------------------------------");
+
+        // === НОВЫЙ КОД: Проверка и создание БД и схемы для PostgreSQL ===
+        boolean databaseReady = false;
+        boolean schemaReady = false;
+
+        if (!isOracle && dbConfig != null) {
+            String targetDbName = dbConfig.getDatabase();
+
+            // Шаг 1: Проверяем и создаем базу данных
+            boolean dbExists = checkDatabaseExists(targetDbName, dbConfig);
+
+            if (!dbExists && !debugMode) {
+                System.out.println("=== Database " + targetDbName + " does not exist, creating... ===");
+                if (createDatabase(targetDbName, dbConfig)) {
+                    System.out.println("=== Database " + targetDbName + " created successfully ===");
+
+                    // Даем время на инициализацию новой БД
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    databaseReady = true;
+                } else {
+                    String errorMsg = "Failed to create database: " + targetDbName;
+                    System.err.println(errorMsg);
+                    this.attr("error", errorMsg);
+                }
+            } else if (dbExists) {
+                System.out.println("=== Database " + targetDbName + " already exists ===");
+                databaseReady = true;
+            }
+
+            // Шаг 2: Проверяем и создаем схему (только если БД существует)
+            if (databaseReady) {
+                // Небольшая пауза для гарантии готовности БД
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+
+                boolean schemaExists = checkSchemaExists(pgSchema, dbName, dbConfig);
+
+                if (!schemaExists && !debugMode) {
+                    System.out.println("=== Schema " + pgSchema + " does not exist, creating... ===");
+                    if (createSchema(pgSchema, dbName, dbConfig)) {
+                        System.out.println("=== Schema " + pgSchema + " created successfully ===");
+                        schemaReady = true;
+
+                        // Даем время на инициализацию схемы
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    } else {
+                        String errorMsg = "Failed to create schema: " + pgSchema;
+                        System.err.println(errorMsg);
+                        this.attr("error", errorMsg);
+                    }
+                } else if (schemaExists) {
+                    System.out.println("=== Schema " + pgSchema + " already exists ===");
+                    schemaReady = true;
+                }
+            }
+        }
+        // ================================================================
 
         // Формирование имени функции
         String docPath = doc != null ? doc.attr("doc_path") : "";
@@ -220,7 +683,7 @@ public class cmpAction extends Base {
                     System.out.println("Oracle action saved with name: " + functionName);
 
                 } else {
-                    // Для PostgreSQL создаем процедуру как раньше
+                    // Для PostgreSQL создаем процедуру
                     String fullFunctionName = pgSchema + "." + functionName;
 
                     // Проверяем, нужно ли создавать функцию
@@ -230,7 +693,7 @@ public class cmpAction extends Base {
                         Boolean exists = functionExistsCache.containsKey(fullFunctionName);
                         if (!exists) {
                             // Если в кэше нет, делаем запрос к БД
-                            exists = checkFunctionExistsInDB(fullFunctionName, pgSchema);
+                            exists = checkFunctionExists(fullFunctionName, pgSchema, dbName, dbConfig);
                             functionExistsCache.put(fullFunctionName, exists);
                             System.out.println("Function " + fullFunctionName + " exists in DB: " + exists);
                         }
@@ -239,7 +702,7 @@ public class cmpAction extends Base {
 
                     if (needToCreate) {
                         // Передаем debugMode в метод createSQLFunctionPG
-                        createSQLFunctionPG(fullFunctionName, pgSchema, element, docPath + " (" + element.attr("name") + ")", debugMode);
+                        createSQLFunctionPG(fullFunctionName, pgSchema, element, docPath + " (" + element.attr("name") + ")", debugMode, dbConfig);
                         // После создания обновляем кэш
                         functionExistsCache.put(fullFunctionName, true);
                     } else {
@@ -828,51 +1291,64 @@ public class cmpAction extends Base {
             HashMap<String, Object> param = (HashMap<String, Object>) procedureList.get(fullActionName);
             Map<String, String> varTypes = (Map<String, String>) param.get("varTypes");
 
-            // Получаем соединение с БД
-            if (session.containsKey("DATABASE")) {
-                HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
-
-                if (data_base.containsKey("CONNECT")) {
-                    conn = (Connection) data_base.get("CONNECT");
-                    // Проверяем, не закрыто ли соединение
-                    try {
-                        if (conn == null || conn.isClosed()) {
-                            System.out.println("Connection is closed, reconnecting...");
-                            conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
-                                    String.valueOf(data_base.get("DATABASE_USER_PASS")));
-                            if (conn != null) {
-                                data_base.put("CONNECT", conn);
-                            }
-                        }
-                    } catch (SQLException e) {
-                        System.err.println("Error checking connection: " + e.getMessage());
-                        conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
-                                String.valueOf(data_base.get("DATABASE_USER_PASS")));
-                        if (conn != null) {
-                            data_base.put("CONNECT", conn);
-                        }
-                    }
-                } else {
-                    System.out.println("Creating new connection...");
-                    conn = getConnect(String.valueOf(data_base.get("DATABASE_USER_NAME")),
-                            String.valueOf(data_base.get("DATABASE_USER_PASS")));
-                    if (conn != null) {
-                        data_base.put("CONNECT", conn);
-                    }
-                }
-            } else {
-                // Используем системного пользователя
-                System.out.println("Using system connection...");
-                conn = getConnect(ServerConstant.config.DATABASE_USER_NAME,
-                        ServerConstant.config.DATABASE_USER_PASS);
+            // Получаем имя схемы из полного имени
+            String schemaName = "public";
+            String functionNameOnly = fullActionName;
+            if (fullActionName.contains(".")) {
+                schemaName = fullActionName.substring(0, fullActionName.lastIndexOf('.'));
+                functionNameOnly = fullActionName.substring(fullActionName.lastIndexOf('.') + 1);
             }
 
-            if (conn == null) {
-                result.put("redirect", ServerConstant.config.LOGIN_PAGE);
-                result.put("ERROR", "Database connection failed");
+            // Получаем конфигурацию БД
+            DatabaseConfig dbConfig = null;
+
+            if (session.containsKey("DATABASE")) {
+                HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
+                dbConfig = new DatabaseConfig();
+                dbConfig.setDriver("org.postgresql.Driver");
+                dbConfig.setHost("localhost");
+                dbConfig.setPort("5432");
+                dbConfig.setDatabase((String) data_base.get("DATABASE_NAME"));
+                dbConfig.setUsername((String) data_base.get("DATABASE_USER_NAME"));
+                dbConfig.setPassword((String) data_base.get("DATABASE_USER_PASS"));
+                dbConfig.setType("jdbc");
+            } else {
+                // Используем конфигурацию из параметров запроса
+                String dbName = query.requestParam.optString("db", "default");
+                dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
+            }
+
+            if (dbConfig == null) {
+                result.put("ERROR", "Database configuration not found");
                 result.put("vars", vars);
-                System.err.println("Database connection failed");
                 return;
+            }
+
+            // Подключаемся с правильным search_path
+            String jdbcUrl = dbConfig.getJdbcUrl();
+            if (!jdbcUrl.contains("currentSchema")) {
+                if (jdbcUrl.contains("?")) {
+                    jdbcUrl += "&currentSchema=" + schemaName;
+                } else {
+                    jdbcUrl += "?currentSchema=" + schemaName;
+                }
+            }
+
+            Class.forName("org.postgresql.Driver");
+            Properties props = new Properties();
+            props.setProperty("user", dbConfig.getUsername());
+            props.setProperty("password", dbConfig.getPassword());
+            props.setProperty("currentSchema", schemaName);
+
+            conn = DriverManager.getConnection(jdbcUrl, props);
+            conn.setAutoCommit(false);
+
+            // Явно устанавливаем search_path
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("SET search_path TO " + schemaName + ", public");
+                System.out.println("Search path set to: " + schemaName + ", public");
+            } catch (SQLException e) {
+                System.err.println("Error setting search path: " + e.getMessage());
             }
 
             String prepareCall = (String) param.get("prepareCall");
@@ -1146,12 +1622,12 @@ public class cmpAction extends Base {
             result.put("vars", vars);
         } finally {
             try { if (cs != null) cs.close(); } catch (Exception e) {}
+            try { if (conn != null) conn.close(); } catch (Exception e) {}
         }
     }
 
-    // Исправленный метод createSQLFunctionPG - поддержка определения типа и преобразования
-    // Исправленный метод createSQLFunctionPG - поддержка определения типа и преобразования
-    private void createSQLFunctionPG(String functionName, String schema, Element element, String fileName, boolean debugMode) {
+    // Исправленный метод createSQLFunctionPG с поддержкой dbConfig
+    private void createSQLFunctionPG(String functionName, String schema, Element element, String fileName, boolean debugMode, DatabaseConfig dbConfig) {
         // Очищаем имя функции от недопустимых символов
         String cleanFunctionName = functionName;
         if (functionName.contains(".")) {
@@ -1169,14 +1645,10 @@ public class cmpAction extends Base {
             return;
         }
 
-        // Получаем имя БД из атрибута DB элемента
-        String dbName = element.hasAttr("DB") ? element.attr("DB") : "default";
-        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
-
         Connection conn = null;
 
+        // Используем переданный dbConfig для подключения к правильной БД
         if (dbConfig != null) {
-            // Используем конфигурацию из DATABASES
             try {
                 Class.forName("org.postgresql.Driver");
                 conn = DriverManager.getConnection(
@@ -1184,9 +1656,9 @@ public class cmpAction extends Base {
                         dbConfig.getUsername(),
                         dbConfig.getPassword()
                 );
-                System.out.println("Connected to database using config: " + dbName + " (" + dbConfig.getJdbcUrl() + ")");
+                System.out.println("Connected to database using config: " + dbConfig.getDatabase() + " (" + dbConfig.getJdbcUrl() + ")");
             } catch (Exception e) {
-                System.err.println("Error connecting to database using config " + dbName + ": " + e.getMessage());
+                System.err.println("Error connecting to database using config: " + e.getMessage());
                 conn = null;
             }
         }

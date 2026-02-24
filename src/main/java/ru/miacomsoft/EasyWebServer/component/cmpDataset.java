@@ -922,6 +922,7 @@ public class cmpDataset extends Base {
 
             HashMap<String, Object> param = (HashMap<String, Object>) procedureList.get(fullDatasetName);
             Map<String, String> varTypes = (Map<String, String>) param.get("varTypes");
+            DatabaseConfig dbConfig = (DatabaseConfig) param.get("dbConfig");
 
             // Получаем имя схемы из полного имени
             String schemaName = "public";
@@ -931,24 +932,22 @@ public class cmpDataset extends Base {
                 functionNameOnly = fullDatasetName.substring(fullDatasetName.lastIndexOf('.') + 1);
             }
 
-            // Получаем соединение с БД с правильным search_path
-            DatabaseConfig dbConfig = null;
-
-            if (session.containsKey("DATABASE")) {
-                HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
-
-                // Создаем конфигурацию из данных сессии
-                dbConfig = new DatabaseConfig();
-                dbConfig.setDriver("org.postgresql.Driver");
-                dbConfig.setHost("localhost");
-                dbConfig.setPort("5432");
-                dbConfig.setDatabase((String) data_base.get("DATABASE_NAME"));
-                dbConfig.setUsername((String) data_base.get("DATABASE_USER_NAME"));
-                dbConfig.setPassword((String) data_base.get("DATABASE_USER_PASS"));
-                dbConfig.setType("jdbc");
-            } else {
-                // Используем конфигурацию из ServerConstant
-                dbConfig = ServerConstant.config.getDatabaseConfig("settings");
+            // Если dbConfig не сохранен в param, пытаемся получить из сессии или конфигурации
+            if (dbConfig == null) {
+                if (session.containsKey("DATABASE")) {
+                    HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
+                    dbConfig = new DatabaseConfig();
+                    dbConfig.setDriver("org.postgresql.Driver");
+                    dbConfig.setHost("localhost");
+                    dbConfig.setPort("5432");
+                    dbConfig.setDatabase((String) data_base.get("DATABASE_NAME"));
+                    dbConfig.setUsername((String) data_base.get("DATABASE_USER_NAME"));
+                    dbConfig.setPassword((String) data_base.get("DATABASE_USER_PASS"));
+                    dbConfig.setType("jdbc");
+                } else {
+                    // Используем конфигурацию из ServerConstant
+                    dbConfig = ServerConstant.config.getDatabaseConfig("settings");
+                }
             }
 
             if (dbConfig == null) {
@@ -979,9 +978,6 @@ public class cmpDataset extends Base {
             // Явно устанавливаем search_path
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("SET search_path TO " + schemaName + ", public");
-            }
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("SET search_path TO " + schemaName + ", public");
                 System.out.println("Search path set to: " + schemaName + ", public");
             } catch (SQLException e) {
                 System.err.println("Error setting search path: " + e.getMessage());
@@ -999,20 +995,9 @@ public class cmpDataset extends Base {
             List<String> varsArr = (List<String>) param.get("vars");
             System.out.println("Vars array: " + varsArr);
 
-            // Регистрируем OUT параметры если есть
-            int ind = 0;
+            // Устанавливаем параметры (начиная с индекса 2, так как индекс 1 - это OUT параметр)
+            int ind = 2;
             for (String varNameOne : varsArr) {
-                ind++;
-                String targetType = varTypes != null ? varTypes.getOrDefault(varNameOne, "string") : "string";
-
-                // Регистрируем OUT параметры (для функций, возвращающих значения через параметры)
-                registerOutParameter(selectFunctionStatement, ind, targetType);
-            }
-
-            // Устанавливаем IN параметры
-            ind = 0;
-            for (String varNameOne : varsArr) {
-                ind++;
                 String valueStr = "";
                 String targetType = varTypes != null ? varTypes.getOrDefault(varNameOne, "string") : "string";
 
@@ -1028,32 +1013,27 @@ public class cmpDataset extends Base {
 
                 System.out.println("Setting parameter " + ind + " (" + varNameOne + "): " + valueStr + " (type: " + targetType + ")");
                 setParameter(selectFunctionStatement, ind, valueStr, targetType, conn);
+                ind++;
             }
 
             System.out.println("Executing query...");
             boolean hasResults = selectFunctionStatement.execute();
             System.out.println("Query executed, hasResults: " + hasResults);
 
-            // Получаем результат
-            if (hasResults) {
-                rs = selectFunctionStatement.getResultSet();
-                if (rs != null) {
-                    if (rs.next()) {
-                        String jsonResult = rs.getString(1);
-                        System.out.println("JSON result: " + jsonResult);
-                        try {
-                            result.put("data", new JSONArray(jsonResult));
-                        } catch (Exception e) {
-                            System.err.println("Error parsing JSON result: " + e.getMessage());
-                            result.put("data", new JSONArray());
-                        }
-                    } else {
-                        System.out.println("No data in result set");
-                        result.put("data", new JSONArray());
-                    }
-                    rs.close();
-                    rs = null;
+            // Получаем результат из OUT параметра
+            Object jsonResult = selectFunctionStatement.getObject(1);
+            if (jsonResult != null) {
+                String jsonString = jsonResult.toString();
+                System.out.println("JSON result: " + jsonString);
+                try {
+                    result.put("data", new JSONArray(jsonString));
+                } catch (Exception e) {
+                    System.err.println("Error parsing JSON result: " + e.getMessage());
+                    result.put("data", new JSONArray());
                 }
+            } else {
+                System.out.println("No data in result");
+                result.put("data", new JSONArray());
             }
 
             System.out.println("Query completed successfully");
@@ -1074,6 +1054,7 @@ public class cmpDataset extends Base {
             } catch (Exception e) {}
         }
     }
+
     /**
      * Устанавливает параметр
      */
@@ -1201,7 +1182,11 @@ public class cmpDataset extends Base {
             cleanFunctionName = "f_" + cleanFunctionName;
         }
 
-        if (procedureList.containsKey(functionName) && !debugMode) {
+        // Формируем полное имя для сохранения в procedureList
+        String fullFunctionName = schema + "." + cleanFunctionName;
+
+        if (procedureList.containsKey(fullFunctionName) && !debugMode) {
+            System.out.println("Function " + fullFunctionName + " already exists in procedureList, skipping creation");
             return;
         }
 
@@ -1421,22 +1406,45 @@ public class cmpDataset extends Base {
             PreparedStatement createFunctionStatement = conn.prepareStatement(createFunctionSQL);
             createFunctionStatement.execute();
 
-            String prepareCall = "SELECT * FROM " + schema + "." + cleanFunctionName + "(" + varsCollStr + ")";
+            // Важно: prepareCall должен быть без SELECT * FROM, просто вызов функции
+            String prepareCall;
+            if (varsCollStr.isEmpty()) {
+                prepareCall = "{ ? = call " + schema + "." + cleanFunctionName + "() }";
+            } else {
+                prepareCall = "{ ? = call " + schema + "." + cleanFunctionName + "(" + varsCollStr + ") }";
+            }
+
             CallableStatement selectFunctionStatement = conn.prepareCall(prepareCall);
+
+            // Регистрируем OUT параметр для возвращаемого JSON
+            selectFunctionStatement.registerOutParameter(1, Types.OTHER);
 
             param.put("selectFunctionStatement", selectFunctionStatement);
             param.put("prepareCall", prepareCall);
             param.put("connect", conn);
             param.put("SQL", createFunctionSQL);
+            param.put("dbConfig", dbConfig); // Сохраняем конфигурацию для последующего использования
 
-            procedureList.put(schema + "." + cleanFunctionName, param);
+            // Сохраняем под полным именем со схемой
+            procedureList.put(fullFunctionName, param);
 
-            System.out.println("Function " + schema + "." + cleanFunctionName + " created successfully");
+            // Также сохраняем под именем без схемы для обратной совместимости
+            procedureList.put(cleanFunctionName, param);
+
+            System.out.println("Function " + fullFunctionName + " created successfully and saved to procedureList");
 
         } catch (SQLException e) {
             System.err.println("Error creating function: " + e.getMessage());
             System.err.println("SQL was:\n" + createFunctionSQL);
             throw new RuntimeException(e);
+        } finally {
+            try {
+                if (conn != null && !conn.isClosed()) {
+                    conn.close();
+                }
+            } catch (SQLException e) {
+                // ignore
+            }
         }
     }
     /**
