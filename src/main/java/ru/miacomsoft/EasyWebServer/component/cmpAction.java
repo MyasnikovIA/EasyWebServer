@@ -57,18 +57,21 @@ public class cmpAction extends Base {
         attrsDst.add("name", name);
         this.initCmpType(element);
 
-        String dbName = RemoveArrKeyRtrn(attrs, "DB", "DB");
+        String dbName = RemoveArrKeyRtrn(attrs, "db", "default");
         String query_type = "sql";
         if (element.attributes().hasKey("query_type")) {
             query_type = element.attributes().get("query_type");
         }
+        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("db") ? null : dbName.toLowerCase());
+        String pgSchema  = "public";
+        if (attrs.hasKey("schema")) {
+            pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
+        } else {
+            if (ServerConstant.config.DATABASES.containsKey(dbName.toLowerCase())) {
+                pgSchema = dbConfig.getSchema();
+            }
+        }
 
-        // Получаем схему PostgreSQL (по умолчанию "public")
-        String pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
-        attrsDst.add("pg_schema", pgSchema);
-
-        // Получаем конфигурацию БД для определения типа
-        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("DB") ? null : dbName);
         String dbType = (dbConfig != null) ? dbConfig.getType() : "jdbc"; // jdbc = postgresql по умолчанию
         attrsDst.add("db_type", dbType);
 
