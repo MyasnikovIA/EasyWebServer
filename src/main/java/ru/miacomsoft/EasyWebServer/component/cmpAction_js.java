@@ -214,7 +214,6 @@ public class cmpAction_js {
             
                     console.log('Sending request data:', requestData);
                     console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + pg_schema);
-            
                     fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + pg_schema, {
                         method: 'POST',
                         headers: {
