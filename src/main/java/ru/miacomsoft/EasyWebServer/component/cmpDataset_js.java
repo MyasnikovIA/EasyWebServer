@@ -181,6 +181,7 @@ public class cmpDataset_js {
                     var dataset_name = ctrlObj.getAttribute('dataset_name');
                     var database_name = ctrlObj.getAttribute('db');
                     var db_type = ctrlObj.getAttribute('db_type');
+                    
              
                     console.log('Dataset info:', {query_type, db, dataset_name});
             
@@ -226,8 +227,8 @@ public class cmpDataset_js {
                             requestData[key]['len'] = varInfo['len'];
                         }
                     }
-                                        fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + ((ctrlObj.getAttribute('pg_schema') || 'public') + '&database_name='+database_name+'&db_type='+db_type), {
-                        method: 'POST',
+                    fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + ((ctrlObj.getAttribute('pg_schema') || 'public') + '&database_name='+database_name+'&db_type='+db_type), {
+                        method: 'POST',query_type
                         headers: {
                             'Content-Type': 'application/json'
                         },
@@ -323,7 +324,6 @@ public class cmpDataset_js {
                             D3Api.GLOBAL_DATA_SET[nameDataset] = { data: [] };
                         }
                         D3Api.GLOBAL_DATA_SET[nameDataset].data = dataObj['data'] || [];
-            
                         console.log('Dataset data:', dataObj['data']);
             
                         if (callBack && typeof callBack === 'function') {

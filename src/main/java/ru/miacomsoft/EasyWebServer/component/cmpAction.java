@@ -468,81 +468,59 @@ public class cmpAction extends Base {
         if (element.attributes().hasKey("query_type")) {
             query_type = element.attributes().get("query_type");
         }
-        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("db") ? null : dbName.toLowerCase());
-        String pgSchema  = "public";
-        if (attrs.hasKey("schema")) {
-            pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
-        } else {
-            if (ServerConstant.config.DATABASES.containsKey(dbName.toLowerCase())) {
-                pgSchema = dbConfig.getSchema();
+        attrsDst.add("query_type", query_type);
+
+        DatabaseConfig dbConfig = null;
+        String pgSchema = "public";
+        String dbType = "jdbc";
+        boolean isOracle = false;
+
+        // Для SQL запросов получаем конфигурацию БД и проверяем существование БД/схемы
+        if (query_type.equals("sql")) {
+            dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("db") ? null : dbName.toLowerCase());
+
+            if (attrs.hasKey("schema")) {
+                pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
+            } else {
+                if (ServerConstant.config.DATABASES.containsKey(dbName.toLowerCase())) {
+                    pgSchema = dbConfig.getSchema();
+                }
             }
-        }
-        attrsDst.add("pg_schema", pgSchema);
-        String dbType = (dbConfig != null) ? dbConfig.getType() : "jdbc"; // jdbc = postgresql по умолчанию
-        boolean isOracle = (dbConfig != null) ? dbConfig.getType().equals("oci8") : false;
-        attrsDst.add("db_type", dbType);
 
-        System.out.println("ServerConstant.config.DATABASES: " + ServerConstant.config.DATABASES);
-        System.out.println("dbName: " + dbName);
-        System.out.println("pgSchema: " + pgSchema);
-        System.out.println("dbType: " + dbType);
-        System.out.println("---------------------------------");
+            if (dbConfig != null) {
+                dbType = dbConfig.getType().toLowerCase();
+                isOracle = dbConfig.getType().equals("oci8");
+            }
 
-        // === НОВЫЙ КОД: Проверка и создание БД и схемы для PostgreSQL ===
-        boolean databaseReady = false;
-        boolean schemaReady = false;
+            // === ПРОВЕРКА И СОЗДАНИЕ БД И СХЕМЫ ДЛЯ PostgreSQL ===
+            if (!isOracle && dbConfig != null) {
+                String targetDbName = dbConfig.getDatabase();
 
-        if (!isOracle && dbConfig != null) {
-            String targetDbName = dbConfig.getDatabase();
+                // Шаг 1: Проверяем и создаем базу данных
+                boolean dbExists = checkDatabaseExists(targetDbName, dbConfig);
 
-            // Шаг 1: Проверяем и создаем базу данных
-            boolean dbExists = checkDatabaseExists(targetDbName, dbConfig);
-
-            if (!dbExists && !debugMode) {
-                System.out.println("=== Database " + targetDbName + " does not exist, creating... ===");
-                if (createDatabase(targetDbName, dbConfig)) {
-                    System.out.println("=== Database " + targetDbName + " created successfully ===");
-
-                    // Даем время на инициализацию новой БД
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+                if (!dbExists && !debugMode) {
+                    System.out.println("=== Database " + targetDbName + " does not exist, creating... ===");
+                    if (createDatabase(targetDbName, dbConfig)) {
+                        System.out.println("=== Database " + targetDbName + " created successfully ===");
+                        try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    } else {
+                        String errorMsg = "Failed to create database: " + targetDbName;
+                        System.err.println(errorMsg);
+                        this.attr("error", errorMsg);
                     }
-                    databaseReady = true;
-                } else {
-                    String errorMsg = "Failed to create database: " + targetDbName;
-                    System.err.println(errorMsg);
-                    this.attr("error", errorMsg);
-                }
-            } else if (dbExists) {
-                System.out.println("=== Database " + targetDbName + " already exists ===");
-                databaseReady = true;
-            }
-
-            // Шаг 2: Проверяем и создаем схему (только если БД существует)
-            if (databaseReady) {
-                // Небольшая пауза для гарантии готовности БД
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                } else if (dbExists) {
+                    System.out.println("=== Database " + targetDbName + " already exists ===");
                 }
 
+                // Шаг 2: Проверяем и создаем схему
                 boolean schemaExists = checkSchemaExists(pgSchema, dbName, dbConfig);
 
                 if (!schemaExists && !debugMode) {
                     System.out.println("=== Schema " + pgSchema + " does not exist, creating... ===");
                     if (createSchema(pgSchema, dbName, dbConfig)) {
                         System.out.println("=== Schema " + pgSchema + " created successfully ===");
-                        schemaReady = true;
-
-                        // Даем время на инициализацию схемы
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
+                        try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
                     } else {
                         String errorMsg = "Failed to create schema: " + pgSchema;
                         System.err.println(errorMsg);
@@ -550,34 +528,45 @@ public class cmpAction extends Base {
                     }
                 } else if (schemaExists) {
                     System.out.println("=== Schema " + pgSchema + " already exists ===");
-                    schemaReady = true;
                 }
             }
+        } else {
+            // Для Java запросов устанавливаем значения по умолчанию
+            System.out.println("Java mode detected, skipping database initialization");
         }
-        // ================================================================
 
-        // Формирование имени функции
+        // Добавляем атрибуты в результирующий элемент
+        attrsDst.add("pg_schema", pgSchema);
+        attrsDst.add("db_type", dbType);
+        attrsDst.add("query_type", query_type);
+        attrsDst.add("db", dbName);
+
+        System.out.println("ServerConstant.config.DATABASES: " + ServerConstant.config.DATABASES);
+        System.out.println("dbName: " + dbName);
+        System.out.println("pgSchema: " + pgSchema);
+        System.out.println("dbType: " + dbType);
+        System.out.println("query_type: " + query_type);
+        System.out.println("---------------------------------");
+
+        // Формирование имени функции (общее для Java и SQL)
         String docPath = doc != null ? doc.attr("doc_path") : "";
         String rootPath = doc != null ? doc.attr("rootPath") : "";
         String relativePath = "";
         if (docPath.length() > rootPath.length() && docPath.length() > 5) {
             relativePath = docPath.substring(rootPath.length(), docPath.length() - 5);
         }
-        // Заменяем разделители путей на подчеркивания
         relativePath = relativePath.replaceAll("[/\\\\]", "_");
-        // Убираем недопустимые символы
         relativePath = relativePath.replaceAll("[^a-zA-Z0-9_]", "");
+
         String pathHash = getMd5Hash(relativePath);
         if (pathHash.length() > 8) {
-            pathHash = pathHash.substring(0, 8); // Берем первые 8 символов хэша
+            pathHash = pathHash.substring(0, 8);
         }
 
-        // Убеждаемся, что имя функции не начинается с цифры
         if (pathHash.length() > 0 && Character.isDigit(pathHash.charAt(0))) {
-            pathHash = "f" + pathHash; // Добавляем префикс 'f' если имя начинается с цифры
+            pathHash = "f" + pathHash;
         }
 
-        // Получаем имя файла без расширения
         String fileName = "";
         if (relativePath.lastIndexOf('/') > 0) {
             fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
@@ -587,12 +576,10 @@ public class cmpAction extends Base {
         }
         String functionName = (pathHash + "_" + fileName + "_" + element.attr("name")).toLowerCase();
 
-        // Дополнительная проверка - убеждаемся, что имя начинается с буквы или подчеркивания
         if (functionName.length() > 0 && Character.isDigit(functionName.charAt(0))) {
             functionName = "f_" + functionName;
         }
 
-        // Ограничиваем длину имени функции (PostgreSQL ограничение 63 символа)
         if (functionName.length() > 60) {
             functionName = functionName.substring(0, 60);
         }
@@ -601,6 +588,7 @@ public class cmpAction extends Base {
         this.attr("action_name", functionName);
         this.attr("name", element.attr("name"));
 
+        // Обработка переменных (общая для Java и SQL)
         StringBuffer jsonVar = new StringBuffer();
         ArrayList<String> jarResourse = new ArrayList<String>();
         ArrayList<String> importPacket = new ArrayList<String>();
@@ -648,16 +636,23 @@ public class cmpAction extends Base {
         attrsDst.add("query_type", query_type);
         attrsDst.add("db", dbName);
 
+        // Обработка тела компонента в зависимости от типа
         if (element.hasText()) {
             if (query_type.equals("java")) {
+                // Для Java - только компиляция, без работы с БД
+                System.out.println("Java mode: compiling function " + functionName);
                 JSONObject infoCompile = new JSONObject();
                 if (!ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse, element.text().trim(), infoCompile)) {
                     this.removeAttr("style");
                     this.html(ru.miacomsoft.EasyWebServer.JavaStrExecut.parseErrorCompile(infoCompile));
                     return;
-                } else {
-                    System.out.println("Compiled Java function: " + functionName);
                 }
+                System.out.println("Java function compiled successfully: " + functionName);
+
+                // Проверяем наличие функции с учетом префикса APP_NAME
+                String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
+                System.out.println("Java function exists check: " + ServerResourceHandler.javaStrExecut.existJavaFunction(fullFunctionName));
+
             } else if (query_type.equals("sql")) {
                 // Для Oracle не создаем процедуры, сохраняем для прямого выполнения
                 if ("oci8".equals(dbType)) {
@@ -700,13 +695,11 @@ public class cmpAction extends Base {
                     // Для PostgreSQL создаем процедуру
                     String fullFunctionName = pgSchema + "." + functionName;
 
-                    // Проверяем, нужно ли создавать функцию
-                    boolean needToCreate = debugMode; // В режиме debug всегда создаем
+                    boolean needToCreate = debugMode;
+
                     if (!needToCreate) {
-                        // Проверяем кэш наличия функции
                         Boolean exists = functionExistsCache.containsKey(fullFunctionName);
                         if (!exists) {
-                            // Если в кэше нет, делаем запрос к БД
                             exists = checkFunctionExists(fullFunctionName, pgSchema, dbName, dbConfig);
                             functionExistsCache.put(fullFunctionName, exists);
                             System.out.println("Function " + fullFunctionName + " exists in DB: " + exists);
@@ -715,19 +708,15 @@ public class cmpAction extends Base {
                     }
 
                     if (needToCreate) {
-                        // Передаем debugMode в метод createSQLFunctionPG
                         createSQLFunctionPG(fullFunctionName, pgSchema, element, docPath + " (" + element.attr("name") + ")", debugMode, dbConfig);
-                        // После создания обновляем кэш
                         functionExistsCache.put(fullFunctionName, true);
                     } else {
                         System.out.println("Function " + fullFunctionName + " already exists, skipping creation");
 
-                        // === НОВЫЙ КОД: Загружаем существующую процедуру в procedureList ===
-                        // Создаем минимальный параметр для procedureList
+                        // Загружаем существующую процедуру в procedureList
                         HashMap<String, Object> param = new HashMap<String, Object>();
                         param.put("SQL", element.text().trim());
 
-                        // Собираем информацию о переменных из дочерних элементов
                         List<String> varsArr = new ArrayList<>();
                         Map<String, String> varTypes = new HashMap<>();
 
@@ -749,7 +738,6 @@ public class cmpAction extends Base {
                         param.put("varTypes", varTypes);
                         param.put("dbConfig", dbConfig);
 
-                        // Формируем prepareCall для существующей процедуры
                         StringBuilder varsColl = new StringBuilder();
                         for (int i = 0; i < varsArr.size(); i++) {
                             if (i > 0) varsColl.append(",");
@@ -759,22 +747,43 @@ public class cmpAction extends Base {
                         String prepareCall = "CALL " + pgSchema + "." + functionName + "(" + varsColl.toString() + ");";
                         param.put("prepareCall", prepareCall);
 
-                        // Сохраняем в procedureList
                         procedureList.put(fullFunctionName, param);
                         procedureList.put(functionName, param);
 
                         System.out.println("Loaded existing procedure into procedureList: " + fullFunctionName);
-                        // ==============================================================
                     }
                 }
             }
         }
 
+        // Очищаем содержимое
         this.text("");
+
+        // Сохраняем важные атрибуты перед удалением
+        String savedQueryType = this.attr("query_type");
+        String savedDbType = this.attr("db_type");
+        String savedPgSchema = this.attr("pg_schema");
+        String savedDb = this.attr("db");
+        String savedActionName = this.attr("action_name");
+        String savedName = this.attr("name");
+        String savedVars = this.attr("vars");
+        String savedStyle = this.attr("style");
+
+        // Удаляем все атрибуты из исходного элемента
         for (Attribute attr : element.attributes().asList()) {
             if ("error".equals(attr.getKey())) continue;
             this.removeAttr(attr.getKey());
         }
+
+        // Восстанавливаем важные атрибуты
+        if (savedQueryType != null) this.attr("query_type", savedQueryType);
+        if (savedDbType != null) this.attr("db_type", savedDbType);
+        if (savedPgSchema != null) this.attr("pg_schema", savedPgSchema);
+        if (savedDb != null) this.attr("db", savedDb);
+        if (savedActionName != null) this.attr("action_name", savedActionName);
+        if (savedName != null) this.attr("name", savedName);
+        if (savedVars != null) this.attr("vars", savedVars);
+        if (savedStyle != null) this.attr("style", savedStyle);
 
         // Автоматическое подключение JavaScript библиотеки для cmpAction
         if (doc != null) {
@@ -866,31 +875,68 @@ public class cmpAction extends Base {
     }
 
     public static byte[] onPage(HttpExchange query) {
-        query.mimeType = "application/json"; // Изменить mime ответа
+        query.mimeType = "application/json";
         Map<String, Object> session = query.session;
-        JSONObject result = new JSONObject();
         JSONObject queryProperty = query.requestParam;
+        JSONObject vars;
+        String postBodyStr = new String(query.postCharBody);
 
         System.out.println("=== cmpAction onPage called ===");
         System.out.println("queryProperty: " + queryProperty.toString());
+        System.out.println("postBodyStr: " + postBodyStr);
 
-        // Получаем тело запроса
-        String postBodyStr = new String(query.postCharBody);
-        JSONObject vars;
-
-        try {
-            if (postBodyStr.trim().startsWith("{")) {
-                vars = new JSONObject(postBodyStr);
-            } else {
-                vars = new JSONObject();
-                System.out.println("Body is not JSON, using empty object");
+        // Парсим входные переменные - новый формат с объектами
+        vars = new JSONObject();
+        if (postBodyStr != null && !postBodyStr.isEmpty()) {
+            try {
+                // Пробуем распарсить как JSON объект
+                JSONObject requestVars = new JSONObject(postBodyStr);
+                // Проходим по всем ключам и копируем значения
+                Iterator<String> keys = requestVars.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    Object val = requestVars.get(key);
+                    if (val instanceof JSONObject) {
+                        // Если значение уже объект, сохраняем как есть
+                        vars.put(key, val);
+                    } else {
+                        // Если простое значение, создаем объект с value
+                        JSONObject varObj = new JSONObject();
+                        varObj.put("value", val.toString());
+                        varObj.put("src", key);
+                        varObj.put("srctype", "var");
+                        vars.put(key, varObj);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Error parsing JSON: " + e.getMessage());
+                // Если не удалось распарсить как JSON, пробуем старый формат
+                if (postBodyStr.indexOf("{") == -1) {
+                    int indParam = 0;
+                    for (String par : postBodyStr.split("&")) {
+                        String[] val = par.split("=");
+                        JSONObject varObj = new JSONObject();
+                        if (val.length == 2) {
+                            varObj.put("value", val[1]);
+                            varObj.put("src", val[0]);
+                            varObj.put("srctype", "var");
+                            vars.put(val[0], varObj);
+                        } else {
+                            indParam++;
+                            varObj.put("value", val[0]);
+                            varObj.put("src", "param" + indParam);
+                            varObj.put("srctype", "var");
+                            vars.put("param" + indParam, varObj);
+                        }
+                    }
+                }
             }
-        } catch (Exception e) {
-            System.err.println("Error parsing JSON body: " + e.getMessage());
-            vars = new JSONObject();
         }
 
-        System.out.println("Action called - Raw vars: " + vars.toString());
+        System.out.println("Parsed vars: " + vars.toString());
+
+        JSONObject result = new JSONObject();
+        result.put("vars", vars); // Возвращаем vars в том же формате
 
         String query_type = queryProperty.optString("query_type", "java");
         String action_name = queryProperty.optString("action_name", "");
@@ -918,9 +964,16 @@ public class cmpAction extends Base {
             debugMode = (boolean) query.session.get("debug_mode");
         }
 
-        if (ServerResourceHandler.javaStrExecut.existJavaFunction(fullActionName)) {
+        // Для Java функций добавляем префикс APP_NAME
+        String javaFunctionName = action_name;
+        if (query_type.equals("java")) {
+            javaFunctionName = ServerConstant.config.APP_NAME + "_" + action_name;
+            System.out.println("Java function name with prefix: " + javaFunctionName);
+        }
+
+        if (ServerResourceHandler.javaStrExecut.existJavaFunction(javaFunctionName)) {
             // Обработка Java функции
-            executeJavaAction(query, result, fullActionName, vars, session);
+            executeJavaAction(query, result, javaFunctionName, vars, session);
         } else if (query_type.equals("sql")) {
             // Для Oracle выполняем прямой SQL запрос
             if ("oci8".equals(db_type)) {
@@ -931,7 +984,6 @@ public class cmpAction extends Base {
             }
         } else {
             result.put("ERROR", "Unsupported query type: " + query_type);
-            result.put("vars", vars);
         }
 
         String resultText = result.toString();
@@ -1249,6 +1301,7 @@ public class cmpAction extends Base {
             cs.setString(index, value);
         }
     }
+
 
     /**
      * Регистрирует OUT параметр для Oracle
@@ -1693,6 +1746,7 @@ public class cmpAction extends Base {
         }
     }
 
+
     // Исправленный метод createSQLFunctionPG с поддержкой dbConfig
     private void createSQLFunctionPG(String functionName, String schema, Element element, String fileName, boolean debugMode, DatabaseConfig dbConfig) {
         // Очищаем имя функции от недопустимых символов
@@ -1974,5 +2028,4 @@ public class cmpAction extends Base {
 
         System.out.println("Procedure " + fullFunctionName + " created successfully and saved to procedureList");
     }
-
 }

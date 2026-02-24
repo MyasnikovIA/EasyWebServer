@@ -257,12 +257,20 @@ public class JavaStrExecut {
 
     /**
      * Проверка наличия скомпелированного файла в памяти приложения
-     *
      * @param name
      * @return
      */
     public boolean existJavaFunction(String name) {
-        return InstanceClassName.containsKey(name);
+        // Проверяем прямое имя
+        if (InstanceClassName.containsKey(name)) {
+            return true;
+        }
+        // Проверяем с префиксом APP_NAME
+        String withPrefix = ServerConstant.config.APP_NAME + "_" + name;
+        if (InstanceClassName.containsKey(withPrefix)) {
+            return true;
+        }
+        return false;
     }
 
     public boolean compile(String name, String code, JSONObject info) {

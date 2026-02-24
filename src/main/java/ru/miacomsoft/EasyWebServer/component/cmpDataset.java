@@ -398,94 +398,63 @@ public class cmpDataset extends Base {
 
         String dbName = RemoveArrKeyRtrn(attrs, "db", "default");
         String query_type = "sql";
-        if (element.attributes().hasKey("query_type")) {
-            query_type = element.attributes().get("query_type");
+        if (attrs.hasKey("query_type")) {
+            query_type = attrs.get("query_type");
         }
+        attrsDst.add("query_type", query_type);
 
-        // Получаем конфигурацию БД для определения типа
-        DatabaseConfig dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("db") ? null : dbName.toLowerCase());
-
+        // Получаем конфигурацию БД (только для SQL запросов)
+        DatabaseConfig dbConfig = null;
         String pgSchema = "public";
-        if (attrs.hasKey("schema")) {
-            pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
-        } else {
-            if (ServerConstant.config.DATABASES.containsKey(dbName.toLowerCase())) {
-                pgSchema = dbConfig.getSchema();
-            }
-        }
-
-        // Получаем схему PostgreSQL (по умолчанию "public")
-        attrsDst.add("pg_schema", pgSchema);
-
-        String dbType = "jdbc"; // jdbc = postgresql по умолчанию
+        String dbType = "jdbc";
         boolean isOracle = false;
-        if (dbConfig != null) {
-            dbType = dbConfig.getType().toLowerCase();
-            isOracle = dbConfig.getType().equals("oci8");
-        }
-        attrsDst.add("db_type", dbType);
 
-        System.out.println("ServerConstant.config.DATABASES: " + ServerConstant.config.DATABASES);
-        System.out.println("dbName: " + dbName);
-        System.out.println("pgSchema: " + pgSchema);
-        System.out.println("dbType: " + dbType);
-        System.out.println("---------------------------------");
+        // Для SQL запросов получаем конфигурацию БД и проверяем существование БД/схемы
+        if (query_type.equals("sql")) {
+            dbConfig = ServerConstant.config.getDatabaseConfig(dbName.equals("db") ? null : dbName.toLowerCase());
 
-        // === НОВЫЙ КОД: Проверка и создание БД и схемы для PostgreSQL ===
-        boolean databaseReady = false;
-        boolean schemaReady = false;
-
-        if (!isOracle && dbConfig != null) {
-            String targetDbName = dbConfig.getDatabase();
-
-            // Шаг 1: Проверяем и создаем базу данных
-            boolean dbExists = checkDatabaseExists(targetDbName, dbConfig);
-
-            if (!dbExists && !debugMode) {
-                System.out.println("=== Database " + targetDbName + " does not exist, creating... ===");
-                if (createDatabase(targetDbName, dbConfig)) {
-                    System.out.println("=== Database " + targetDbName + " created successfully ===");
-
-                    // Даем время на инициализацию новой БД
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    databaseReady = true;
-                } else {
-                    String errorMsg = "Failed to create database: " + targetDbName;
-                    System.err.println(errorMsg);
-                    this.attr("error", errorMsg);
+            if (attrs.hasKey("schema")) {
+                pgSchema = RemoveArrKeyRtrn(attrs, "schema", "public");
+            } else {
+                if (ServerConstant.config.DATABASES.containsKey(dbName.toLowerCase())) {
+                    pgSchema = dbConfig.getSchema();
                 }
-            } else if (dbExists) {
-                System.out.println("=== Database " + targetDbName + " already exists ===");
-                databaseReady = true;
             }
 
-            // Шаг 2: Проверяем и создаем схему (только если БД существует)
-            if (databaseReady) {
-                // Небольшая пауза для гарантии готовности БД
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+            if (dbConfig != null) {
+                dbType = dbConfig.getType().toLowerCase();
+                isOracle = dbConfig.getType().equals("oci8");
+            }
+
+            // === ПРОВЕРКА И СОЗДАНИЕ БД И СХЕМЫ ДЛЯ PostgreSQL ===
+            if (!isOracle && dbConfig != null) {
+                String targetDbName = dbConfig.getDatabase();
+
+                // Шаг 1: Проверяем и создаем базу данных
+                boolean dbExists = checkDatabaseExists(targetDbName, dbConfig);
+
+                if (!dbExists && !debugMode) {
+                    System.out.println("=== Database " + targetDbName + " does not exist, creating... ===");
+                    if (createDatabase(targetDbName, dbConfig)) {
+                        System.out.println("=== Database " + targetDbName + " created successfully ===");
+                        try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    } else {
+                        String errorMsg = "Failed to create database: " + targetDbName;
+                        System.err.println(errorMsg);
+                        this.attr("error", errorMsg);
+                    }
+                } else if (dbExists) {
+                    System.out.println("=== Database " + targetDbName + " already exists ===");
                 }
 
+                // Шаг 2: Проверяем и создаем схему
                 boolean schemaExists = checkSchemaExists(pgSchema, dbName, dbConfig);
 
                 if (!schemaExists && !debugMode) {
                     System.out.println("=== Schema " + pgSchema + " does not exist, creating... ===");
                     if (createSchema(pgSchema, dbName, dbConfig)) {
                         System.out.println("=== Schema " + pgSchema + " created successfully ===");
-                        schemaReady = true;
-
-                        // Даем время на инициализацию схемы
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
+                        try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
                     } else {
                         String errorMsg = "Failed to create schema: " + pgSchema;
                         System.err.println(errorMsg);
@@ -493,35 +462,45 @@ public class cmpDataset extends Base {
                     }
                 } else if (schemaExists) {
                     System.out.println("=== Schema " + pgSchema + " already exists ===");
-                    schemaReady = true;
                 }
             }
+        } else {
+            // Для Java запросов устанавливаем значения по умолчанию
+            System.out.println("Java mode detected, skipping database initialization");
         }
-        // ================================================================
 
-        // Исправленное формирование имени функции
+        // Добавляем атрибуты в результирующий элемент
+        attrsDst.add("pg_schema", pgSchema);
+        attrsDst.add("db_type", dbType);
+        attrsDst.add("query_type", query_type);
+        attrsDst.add("db", dbName);
+
+        System.out.println("ServerConstant.config.DATABASES: " + ServerConstant.config.DATABASES);
+        System.out.println("dbName: " + dbName);
+        System.out.println("pgSchema: " + pgSchema);
+        System.out.println("dbType: " + dbType);
+        System.out.println("query_type: " + query_type);
+        System.out.println("---------------------------------");
+
+        // Формирование имени функции (общее для Java и SQL)
         String docPath = doc != null ? doc.attr("doc_path") : "";
         String rootPath = doc != null ? doc.attr("rootPath") : "";
         String relativePath = "";
         if (docPath.length() > rootPath.length() && docPath.length() > 5) {
-            relativePath = docPath.substring(rootPath.length(), docPath.length() - 5); // убираем .html/.java
+            relativePath = docPath.substring(rootPath.length(), docPath.length() - 5);
         }
-        // Заменяем все разделители путей на подчеркивания
         relativePath = relativePath.replaceAll("[/\\\\]", "_");
-        // Убираем возможные лишние символы
         relativePath = relativePath.replaceAll("[^a-zA-Z0-9_]", "");
 
         String pathHash = getMd5Hash(relativePath);
         if (pathHash.length() > 8) {
-            pathHash = pathHash.substring(0, 8); // Берем первые 8 символов хэша
+            pathHash = pathHash.substring(0, 8);
         }
 
-        // Убеждаемся, что имя функции не начинается с цифры
         if (pathHash.length() > 0 && Character.isDigit(pathHash.charAt(0))) {
-            pathHash = "f" + pathHash; // Добавляем префикс 'f' если имя начинается с цифры
+            pathHash = "f" + pathHash;
         }
 
-        // Получаем имя файла без расширения
         String fileName = "";
         if (relativePath.lastIndexOf('/') > 0) {
             fileName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
@@ -531,12 +510,10 @@ public class cmpDataset extends Base {
         }
         String functionName = (pathHash + "_" + fileName + "_" + element.attr("name")).toLowerCase();
 
-        // Дополнительная проверка - убеждаемся, что имя начинается с буквы или подчеркивания
         if (functionName.length() > 0 && Character.isDigit(functionName.charAt(0))) {
             functionName = "f_" + functionName;
         }
 
-        // Ограничиваем длину имени функции (PostgreSQL ограничение 63 символа)
         if (functionName.length() > 60) {
             functionName = functionName.substring(0, 60);
         }
@@ -545,6 +522,7 @@ public class cmpDataset extends Base {
         this.attr("dataset_name", functionName);
         this.attr("name", element.attr("name"));
 
+        // Обработка переменных (общая для Java и SQL)
         StringBuffer jsonVar = new StringBuffer();
         ArrayList<String> jarResourse = new ArrayList<String>();
         ArrayList<String> importPacket = new ArrayList<String>();
@@ -552,14 +530,16 @@ public class cmpDataset extends Base {
         for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
             Element itemElement = element.child(numChild);
             Attributes attrsItem = itemElement.attributes();
-            if (itemElement.tag().toString().toLowerCase().indexOf("import") != -1) {
+            String tagName = itemElement.tag().toString().toLowerCase();
+
+            if (tagName.indexOf("import") != -1) {
                 if (attrsItem.hasKey("path")) {
                     jarResourse.add(attrsItem.get("path"));
                 }
                 if (attrsItem.hasKey("packet")) {
                     importPacket.add(attrsItem.get("packet"));
                 }
-            } else if (itemElement.tag().toString().toLowerCase().indexOf("var") != -1) {
+            } else if (tagName.indexOf("var") != -1) {
                 String nameItem = attrsItem.get("name");
                 String src = RemoveArrKeyRtrn(attrsItem, "src", nameItem);
                 String srctype = RemoveArrKeyRtrn(attrsItem, "srctype", "");
@@ -573,68 +553,64 @@ public class cmpDataset extends Base {
                 jsonVar.append("},");
             }
         }
+
         String jsonVarStr = jsonVar.toString();
         if (jsonVarStr.length()>0) {
             jsonVarStr = jsonVarStr.substring(0, jsonVarStr.length() - 1);
         }
-
         this.attr("vars", "{" + jsonVarStr + "}");
-        this.attr("query_type", query_type);
-        this.attr("db", dbName);
 
+        // Обработка тела компонента в зависимости от типа
         if (element.hasText()) {
             if (query_type.equals("java")) {
+                // Для Java - только компиляция, без работы с БД
+                System.out.println("Java mode: compiling function " + functionName);
                 JSONObject infoCompile = new JSONObject();
                 if (!ServerResourceHandler.javaStrExecut.compile(functionName, importPacket, jarResourse, element.text().trim(), infoCompile)) {
                     this.removeAttr("style");
                     this.html(ru.miacomsoft.EasyWebServer.JavaStrExecut.parseErrorCompile(infoCompile));
                     return;
                 }
+                System.out.println("Java function compiled successfully: " + functionName);
+
+                // Проверяем наличие функции с учетом префикса APP_NAME
+                String fullFunctionName = ServerConstant.config.APP_NAME + "_" + functionName;
+                System.out.println("Java function exists check: " + ServerResourceHandler.javaStrExecut.existJavaFunction(fullFunctionName));
+
             } else if (query_type.equals("sql")) {
-                // Для Oracle не создаем функции, выполняем прямые запросы
+                // Для SQL - создаем функцию в БД
                 if ("oci8".equals(dbType)) {
                     System.out.println("Oracle detected, using direct SQL query for dataset: " + functionName);
-                    // Для Oracle просто сохраняем SQL текст в параметрах, используем functionName без схемы
                     HashMap<String, Object> param = new HashMap<String, Object>();
                     param.put("SQL", element.text().trim());
                     param.put("vars", new ArrayList<String>());
                     param.put("dbType", dbType);
                     param.put("dbName", dbName);
-                    // Сохраняем под именем functionName (без схемы)
                     procedureList.put(functionName, param);
                 } else {
-                    // Для PostgreSQL создаем функцию
                     String fullFunctionName = pgSchema + "." + functionName;
 
-                    // Проверяем, нужно ли создавать функцию
-                    boolean needToCreate = debugMode; // В режиме debug всегда создаем
+                    boolean needToCreate = debugMode;
 
                     if (!needToCreate) {
-                        // Проверяем кэш наличия функции
                         Boolean exists = functionExistsCache.containsKey(fullFunctionName);
                         if (!exists) {
-                            // Если в кэше нет, делаем запрос к БД
                             exists = checkFunctionExists(fullFunctionName, pgSchema, dbName, dbConfig);
                             functionExistsCache.put(fullFunctionName, exists);
                             System.out.println("Function " + fullFunctionName + " exists in DB: " + exists);
                         }
-
-                        // Если функции нет в БД, создаем её
                         needToCreate = !exists;
                     }
 
                     if (needToCreate) {
-                        // Передаем debugMode в метод createSQL
                         createSQL(fullFunctionName, pgSchema, element, docPath + " (" + element.attr("name") + ")", debugMode, dbConfig);
                     } else {
                         System.out.println("Function " + fullFunctionName + " already exists, skipping creation");
 
-                        // === ЗАГРУЗКА СУЩЕСТВУЮЩЕЙ ФУНКЦИИ В procedureList ===
-                        // Создаем параметр для procedureList
+                        // Загружаем существующую функцию в procedureList
                         HashMap<String, Object> param = new HashMap<String, Object>();
                         param.put("SQL", element.text().trim());
 
-                        // Собираем информацию о переменных из дочерних элементов
                         List<String> varsArr = new ArrayList<>();
                         Map<String, String> varTypes = new HashMap<>();
 
@@ -656,7 +632,6 @@ public class cmpDataset extends Base {
                         param.put("varTypes", varTypes);
                         param.put("dbConfig", dbConfig);
 
-                        // Формируем prepareCall для существующей функции - используем SELECT
                         StringBuilder varsColl = new StringBuilder();
                         for (int i = 0; i < varsArr.size(); i++) {
                             if (i > 0) varsColl.append(",");
@@ -671,22 +646,44 @@ public class cmpDataset extends Base {
                         }
 
                         param.put("prepareCall", prepareCall);
-
-                        // Сохраняем в procedureList
                         procedureList.put(fullFunctionName, param);
                         procedureList.put(functionName, param);
 
-                        System.out.println("Loaded existing function into procedureList: " + fullFunctionName + " with prepareCall: " + prepareCall);
-                        // ==============================================================
+                        System.out.println("Loaded existing function into procedureList: " + fullFunctionName);
                     }
                 }
             }
         }
+
+        // Очищаем содержимое
         this.text("");
+
+        // Сохраняем важные атрибуты перед удалением
+        String savedQueryType = this.attr("query_type");
+        String savedDbType = this.attr("db_type");
+        String savedPgSchema = this.attr("pg_schema");
+        String savedDb = this.attr("db");
+        String savedDatasetName = this.attr("dataset_name");
+        String savedName = this.attr("name");
+        String savedVars = this.attr("vars");
+        String savedStyle = this.attr("style");
+
+        // Удаляем все атрибуты из исходного элемента
         for (Attribute attr : element.attributes().asList()) {
             if ("error".equals(attr.getKey())) continue;
             this.removeAttr(attr.getKey());
         }
+
+        // Восстанавливаем важные атрибуты
+        if (savedQueryType != null) this.attr("query_type", savedQueryType);
+        if (savedDbType != null) this.attr("db_type", savedDbType);
+        if (savedPgSchema != null) this.attr("pg_schema", savedPgSchema);
+        if (savedDb != null) this.attr("db", savedDb);
+        if (savedDatasetName != null) this.attr("dataset_name", savedDatasetName);
+        if (savedName != null) this.attr("name", savedName);
+        if (savedVars != null) this.attr("vars", savedVars);
+        if (savedStyle != null) this.attr("style", savedStyle);
+
         StringBuffer sb = new StringBuffer();
         sb.append("<script> $(function() {");
         sb.append("  D3Api.setDatasetAuto('" + name + "');");
@@ -698,15 +695,12 @@ public class cmpDataset extends Base {
             }
         }
 
-        // Автоматическое подключение JavaScript библиотеки для cmpDataset
+        // Автоматическое подключение JavaScript библиотеки
         if (doc != null) {
             Elements head = doc.getElementsByTag("head");
-
-            // Проверяем, не подключена ли уже библиотека
             if (head != null && head.size() > 0) {
                 Elements existingScripts = head.select("script[src*='cmpDataset_js']");
                 if (existingScripts.isEmpty()) {
-                    // Добавляем ссылку на JS библиотеку
                     String jsPath = "{component}/cmpDataset_js";
                     head.append("<script cmp=\"dataset-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
                     System.out.println("cmpDataset: JavaScript library auto-included for dataset: " + name);
@@ -782,24 +776,20 @@ public class cmpDataset extends Base {
         JSONObject queryProperty = query.requestParam;
         JSONObject vars;
         String postBodyStr = new String(query.postCharBody);
-
         System.out.println("=== cmpDataset onPage called ===");
         System.out.println("queryProperty: " + queryProperty.toString());
         System.out.println("postBodyStr: " + postBodyStr);
-
         // Парсим входные переменные - новый формат с объектами
         vars = new JSONObject();
         if (postBodyStr != null && !postBodyStr.isEmpty()) {
             try {
                 // Пробуем распарсить как JSON объект
                 JSONObject requestVars = new JSONObject(postBodyStr);
-
                 // Проходим по всем ключам и копируем значения
                 Iterator<String> keys = requestVars.keys();
                 while (keys.hasNext()) {
                     String key = keys.next();
                     Object val = requestVars.get(key);
-
                     if (val instanceof JSONObject) {
                         // Если значение уже объект, сохраняем как есть
                         vars.put(key, val);
@@ -860,6 +850,10 @@ public class cmpDataset extends Base {
         if (query.session != null && query.session.containsKey("debug_mode")) {
             debugMode = (boolean) query.session.get("debug_mode");
         }
+
+        String fullFunctionName = ServerConstant.config.APP_NAME + "_" + dataset_name;
+        System.out.println("Java function exists check: " + ServerResourceHandler.javaStrExecut.existJavaFunction(fullFunctionName));
+        dataset_name = fullFunctionName;
 
         if (ServerResourceHandler.javaStrExecut.existJavaFunction(dataset_name)) {
             // Обработка Java функции

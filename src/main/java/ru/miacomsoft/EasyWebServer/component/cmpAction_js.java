@@ -160,8 +160,9 @@ public class cmpAction_js {
             
                     var query_type = ctrlObj.getAttribute('query_type') || 'java';
                     var action_name = ctrlObj.getAttribute('action_name');
+                    var pg_schema = ctrlObj.getAttribute('pg_schema') || 'public';
             
-                    console.log('Action info:', {query_type, action_name});
+                    console.log('Action info:', {query_type, action_name, pg_schema});
                     console.log('Parsed vars:', jsonVars);
             
                     // Формируем данные для отправки
@@ -212,9 +213,9 @@ public class cmpAction_js {
                     }
             
                     console.log('Sending request data:', requestData);
-                    console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'));
+                    console.log('URL:', '/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + pg_schema);
             
-                    fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + (ctrlObj.getAttribute('pg_schema') || 'public'), {
+                    fetch('/{component}/cmpAction?query_type=' + query_type + '&action_name=' + action_name + '&pg_schema=' + pg_schema, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -226,6 +227,7 @@ public class cmpAction_js {
                     })
                     .then(function(dataObj) {
                         console.log('Response received:', dataObj);
+                        
                         if (dataObj.redirect) {
                             if (window.saveDirect) {
                                 window.saveDirect('loginDirect');
