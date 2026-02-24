@@ -71,7 +71,7 @@ public class cmpAction extends Base {
                 pgSchema = dbConfig.getSchema();
             }
         }
-
+        attrsDst.add("pg_schema", pgSchema);
         String dbType = (dbConfig != null) ? dbConfig.getType() : "jdbc"; // jdbc = postgresql по умолчанию
         attrsDst.add("db_type", dbType);
 
