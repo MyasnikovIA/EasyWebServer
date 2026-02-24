@@ -439,6 +439,20 @@ public class cmpAction extends Base {
         }
     }
 
+    /**
+     * Вспомогательный метод для проверки наличия var элементов
+     */
+    private boolean hasVarElements(Element element) {
+        for (int i = 0; i < element.childrenSize(); i++) {
+            Element child = element.child(i);
+            if (child.tag().toString().toLowerCase().indexOf("var") != -1 ||
+                    child.tag().toString().toLowerCase().indexOf("cmpactionvar") != -1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Общая логика инициализации
     private void initialize(Document doc, Element element) {
         Attributes attrs = element.attributes();
@@ -707,6 +721,50 @@ public class cmpAction extends Base {
                         functionExistsCache.put(fullFunctionName, true);
                     } else {
                         System.out.println("Function " + fullFunctionName + " already exists, skipping creation");
+
+                        // === НОВЫЙ КОД: Загружаем существующую процедуру в procedureList ===
+                        // Создаем минимальный параметр для procedureList
+                        HashMap<String, Object> param = new HashMap<String, Object>();
+                        param.put("SQL", element.text().trim());
+
+                        // Собираем информацию о переменных из дочерних элементов
+                        List<String> varsArr = new ArrayList<>();
+                        Map<String, String> varTypes = new HashMap<>();
+
+                        for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
+                            Element itemElement = element.child(numChild);
+                            String tagNameItem = itemElement.tag().toString().toLowerCase();
+
+                            if (tagNameItem.indexOf("var") != -1 || tagNameItem.indexOf("cmpactionvar") != -1) {
+                                Attributes attrsItem = itemElement.attributes();
+                                String nameItem = RemoveArrKeyRtrn(attrsItem, "name", "");
+                                String type = RemoveArrKeyRtrn(attrsItem, "type", "string");
+
+                                varsArr.add(nameItem);
+                                varTypes.put(nameItem, type);
+                            }
+                        }
+
+                        param.put("vars", varsArr);
+                        param.put("varTypes", varTypes);
+                        param.put("dbConfig", dbConfig);
+
+                        // Формируем prepareCall для существующей процедуры
+                        StringBuilder varsColl = new StringBuilder();
+                        for (int i = 0; i < varsArr.size(); i++) {
+                            if (i > 0) varsColl.append(",");
+                            varsColl.append("?");
+                        }
+
+                        String prepareCall = "CALL " + pgSchema + "." + functionName + "(" + varsColl.toString() + ");";
+                        param.put("prepareCall", prepareCall);
+
+                        // Сохраняем в procedureList
+                        procedureList.put(fullFunctionName, param);
+                        procedureList.put(functionName, param);
+
+                        System.out.println("Loaded existing procedure into procedureList: " + fullFunctionName);
+                        // ==============================================================
                     }
                 }
             }

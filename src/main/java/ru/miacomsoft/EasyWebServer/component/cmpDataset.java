@@ -1543,7 +1543,7 @@ public class cmpDataset extends Base {
             }
         }
     }
-    
+
     /**
      * Получает соединение с правильным search_path для схемы
      */
