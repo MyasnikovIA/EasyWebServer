@@ -24,6 +24,10 @@ public class cmpAction extends Base {
     // Кэш для хранения информации о существовании функций в БД
     private static Map<String, Boolean> functionExistsCache = new HashMap<>();
 
+    // Добавляем новые кэши
+    private static Map<String, Boolean> schemaExistsCache = new HashMap<>();
+    private static Map<String, Boolean> databaseExistsCache = new HashMap<>();
+
     // Добавляем поле для хранения режима отладки
     private boolean debugMode = false;
 
