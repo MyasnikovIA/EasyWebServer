@@ -1290,6 +1290,7 @@ public class cmpAction extends Base {
 
             HashMap<String, Object> param = (HashMap<String, Object>) procedureList.get(fullActionName);
             Map<String, String> varTypes = (Map<String, String>) param.get("varTypes");
+            DatabaseConfig dbConfig = (DatabaseConfig) param.get("dbConfig");
 
             // Получаем имя схемы из полного имени
             String schemaName = "public";
@@ -1299,23 +1300,23 @@ public class cmpAction extends Base {
                 functionNameOnly = fullActionName.substring(fullActionName.lastIndexOf('.') + 1);
             }
 
-            // Получаем конфигурацию БД
-            DatabaseConfig dbConfig = null;
-
-            if (session.containsKey("DATABASE")) {
-                HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
-                dbConfig = new DatabaseConfig();
-                dbConfig.setDriver("org.postgresql.Driver");
-                dbConfig.setHost("localhost");
-                dbConfig.setPort("5432");
-                dbConfig.setDatabase((String) data_base.get("DATABASE_NAME"));
-                dbConfig.setUsername((String) data_base.get("DATABASE_USER_NAME"));
-                dbConfig.setPassword((String) data_base.get("DATABASE_USER_PASS"));
-                dbConfig.setType("jdbc");
-            } else {
-                // Используем конфигурацию из параметров запроса
-                String dbName = query.requestParam.optString("db", "default");
-                dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
+            // Если dbConfig не сохранен в param, пытаемся получить из сессии или конфигурации
+            if (dbConfig == null) {
+                if (session.containsKey("DATABASE")) {
+                    HashMap<String, Object> data_base = (HashMap<String, Object>) session.get("DATABASE");
+                    dbConfig = new DatabaseConfig();
+                    dbConfig.setDriver("org.postgresql.Driver");
+                    dbConfig.setHost("localhost");
+                    dbConfig.setPort("5432");
+                    dbConfig.setDatabase((String) data_base.get("DATABASE_NAME"));
+                    dbConfig.setUsername((String) data_base.get("DATABASE_USER_NAME"));
+                    dbConfig.setPassword((String) data_base.get("DATABASE_USER_PASS"));
+                    dbConfig.setType("jdbc");
+                } else {
+                    // Используем конфигурацию из параметров запроса
+                    String dbName = query.requestParam.optString("db", "default");
+                    dbConfig = ServerConstant.config.getDatabaseConfig(dbName);
+                }
             }
 
             if (dbConfig == null) {
@@ -1324,7 +1325,7 @@ public class cmpAction extends Base {
                 return;
             }
 
-            // Подключаемся с правильным search_path
+            // Устанавливаем правильную схему в URL
             String jdbcUrl = dbConfig.getJdbcUrl();
             if (!jdbcUrl.contains("currentSchema")) {
                 if (jdbcUrl.contains("?")) {
@@ -1334,6 +1335,7 @@ public class cmpAction extends Base {
                 }
             }
 
+            // Подключаемся с правильным search_path
             Class.forName("org.postgresql.Driver");
             Properties props = new Properties();
             props.setProperty("user", dbConfig.getUsername());
@@ -1578,7 +1580,7 @@ public class cmpAction extends Base {
                                 Object[] array = (Object[]) arrayVal.getArray();
                                 JSONArray jsonArray = new JSONArray();
                                 for (Object item : array) {
-                                    jsonArray.put(item.toString());
+                                    jsonArray.put(item != null ? item.toString() : null);
                                 }
                                 outParam = jsonArray.toString();
                             } else {
@@ -1598,6 +1600,7 @@ public class cmpAction extends Base {
 
                 System.out.println("OUT parameter " + ind + " (" + varNameOne + "): " + outParam);
 
+                // Обновляем vars с результатами
                 if (vars.has(varNameOne) && vars.get(varNameOne) instanceof JSONObject) {
                     JSONObject varOne = vars.getJSONObject(varNameOne);
                     if (varOne.optString("srctype").equals("session")) {
@@ -1605,6 +1608,12 @@ public class cmpAction extends Base {
                     } else {
                         varOne.put("value", outParam);
                     }
+                } else {
+                    JSONObject newVar = new JSONObject();
+                    newVar.put("value", outParam);
+                    newVar.put("src", varNameOne);
+                    newVar.put("srctype", "var");
+                    vars.put(varNameOne, newVar);
                 }
             }
 
@@ -1640,8 +1649,11 @@ public class cmpAction extends Base {
             cleanFunctionName = "f_" + cleanFunctionName;
         }
 
-        if (procedureList.containsKey(functionName) && !debugMode) {
-            // Если процедура уже создана в БД и режим отладки отключен, тогда пропускаем создание новой процедуры
+        // Формируем полное имя для сохранения
+        String fullFunctionName = schema + "." + cleanFunctionName;
+
+        if (procedureList.containsKey(fullFunctionName) && !debugMode) {
+            System.out.println("Procedure " + fullFunctionName + " already exists in procedureList, skipping creation");
             return;
         }
 
@@ -1894,10 +1906,15 @@ public class cmpAction extends Base {
         param.put("varsArr", varsArr);
         param.put("SQL", createProcedureSQL);
         param.put("prepareCall", prepareCall);
+        param.put("dbConfig", dbConfig); // Сохраняем конфигурацию для последующего использования
 
-        procedureList.put(schema + "." + cleanFunctionName, param);
+        // Сохраняем под полным именем со схемой
+        procedureList.put(fullFunctionName, param);
 
-        System.out.println("Procedure " + schema + "." + cleanFunctionName + " created successfully");
+        // Также сохраняем под именем без схемы для обратной совместимости
+        procedureList.put(cleanFunctionName, param);
+
+        System.out.println("Procedure " + fullFunctionName + " created successfully and saved to procedureList");
     }
 
 }
