@@ -787,33 +787,61 @@ public class cmpDataset extends Base {
         System.out.println("queryProperty: " + queryProperty.toString());
         System.out.println("postBodyStr: " + postBodyStr);
 
-        // Парсим входные переменные
-        if (postBodyStr.indexOf("{") == -1) {
-            vars = new JSONObject();
-            int indParam = 0;
-            for (String par : postBodyStr.split("&")) {
-                String[] val = par.split("=");
-                if (val.length == 2) {
-                    vars.put(val[0], val[1]);
-                } else {
-                    indParam++;
-                    vars.put("param" + indParam, val[0]);
-                }
-            }
-        } else {
+        // Парсим входные переменные - новый формат с объектами
+        vars = new JSONObject();
+        if (postBodyStr != null && !postBodyStr.isEmpty()) {
             try {
-                vars = new JSONObject(postBodyStr);
+                // Пробуем распарсить как JSON объект
+                JSONObject requestVars = new JSONObject(postBodyStr);
+
+                // Проходим по всем ключам и копируем значения
+                Iterator<String> keys = requestVars.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    Object val = requestVars.get(key);
+
+                    if (val instanceof JSONObject) {
+                        // Если значение уже объект, сохраняем как есть
+                        vars.put(key, val);
+                    } else {
+                        // Если простое значение, создаем объект с value
+                        JSONObject varObj = new JSONObject();
+                        varObj.put("value", val.toString());
+                        varObj.put("src", key);
+                        varObj.put("srctype", "var");
+                        vars.put(key, varObj);
+                    }
+                }
             } catch (Exception e) {
-                vars = new JSONObject();
                 System.err.println("Error parsing JSON: " + e.getMessage());
+                // Если не удалось распарсить как JSON, пробуем старый формат
+                if (postBodyStr.indexOf("{") == -1) {
+                    int indParam = 0;
+                    for (String par : postBodyStr.split("&")) {
+                        String[] val = par.split("=");
+                        JSONObject varObj = new JSONObject();
+                        if (val.length == 2) {
+                            varObj.put("value", val[1]);
+                            varObj.put("src", val[0]);
+                            varObj.put("srctype", "var");
+                            vars.put(val[0], varObj);
+                        } else {
+                            indParam++;
+                            varObj.put("value", val[0]);
+                            varObj.put("src", "param" + indParam);
+                            varObj.put("srctype", "var");
+                            vars.put("param" + indParam, varObj);
+                        }
+                    }
+                }
             }
         }
 
         System.out.println("Parsed vars: " + vars.toString());
 
         JSONObject result = new JSONObject();
-        result.put("data", new JSONArray());
-        result.put("vars", vars);
+        result.put("data", new JSONArray()); // JavaScript ожидает dataObj['data']
+        result.put("vars", vars); // Возвращаем vars в том же формате
 
         String query_type = queryProperty.optString("query_type", "sql");
         String dataset_name = queryProperty.optString("dataset_name", "");
@@ -866,7 +894,28 @@ public class cmpDataset extends Base {
                 if (resFun.has("JAVA_ERROR")) {
                     result.put("ERROR", resFun.get("JAVA_ERROR"));
                 } else {
-                    result.put("data", dataRes);
+                    result.put("data", dataRes); // JavaScript ожидает dataObj['data']
+
+                    // Обновляем vars с результатами из Java функции
+                    if (resFun.length() > 0) {
+                        keys = resFun.keys();
+                        while (keys.hasNext()) {
+                            String key = keys.next();
+                            if (!key.equals("JAVA_ERROR") && !key.equals("data")) {
+                                Object value = resFun.get(key);
+                                if (vars.has(key) && vars.get(key) instanceof JSONObject) {
+                                    vars.getJSONObject(key).put("value", value.toString());
+                                } else {
+                                    JSONObject newVar = new JSONObject();
+                                    newVar.put("value", value.toString());
+                                    newVar.put("src", key);
+                                    newVar.put("srctype", "var");
+                                    vars.put(key, newVar);
+                                }
+                            }
+                        }
+                        result.put("vars", vars);
+                    }
                 }
             } catch (Exception e) {
                 result.put("ERROR", "Java function error: " + e.getMessage());
@@ -876,7 +925,6 @@ public class cmpDataset extends Base {
         } else if (query_type.equals("sql")) {
             // Для Oracle выполняем прямой SQL запрос
             if (isOracleQuery) {
-                // Для Oracle используем dataset_name как есть, без добавления схемы
                 executeOracleQuery(query, result, dataset_name, database_name, vars, debugMode);
             } else {
                 // Для PostgreSQL формируем полное имя со схемой
@@ -929,9 +977,7 @@ public class cmpDataset extends Base {
             System.out.println("Executing Oracle SQL: " + sql);
             System.out.println("With params: " + params);
 
-            // Используем улучшенный метод OracleQuery с поддержкой параметров
             JSONArray dataArray = OracleQuery.executeQuery(dbConfig, sql, params);
-
             result.put("data", dataArray);
 
             if (debugMode) {
@@ -943,21 +989,6 @@ public class cmpDataset extends Base {
             System.err.println("Error in Oracle query: " + e.getMessage());
             e.printStackTrace();
             result.put("ERROR", "Oracle query error: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Проверка, является ли строка числом
-     */
-    private static boolean isNumeric(String str) {
-        if (str == null || str.isEmpty()) {
-            return false;
-        }
-        try {
-            Double.parseDouble(str);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
         }
     }
 
@@ -1071,37 +1102,45 @@ public class cmpDataset extends Base {
                 setParameter(selectFunctionStatement, ind, valueStr, targetType, conn);
                 ind++;
             }
-
             System.out.println("Executing query...");
             boolean hasResults = selectFunctionStatement.execute();
             System.out.println("Query executed, hasResults: " + hasResults);
-
             if (hasResults) {
                 rs = selectFunctionStatement.getResultSet();
                 if (rs != null) {
-                    JSONArray dataArray = new JSONArray();
                     ResultSetMetaData metaData = rs.getMetaData();
                     int columnCount = metaData.getColumnCount();
-
                     while (rs.next()) {
                         JSONObject row = new JSONObject();
                         for (int i = 1; i <= columnCount; i++) {
                             String columnName = metaData.getColumnLabel(i);
                             Object value = rs.getObject(i);
                             if (value == null) {
-                                row.put(columnName, JSONObject.NULL);
+                                result.put("data", JSONObject.NULL);
                             } else {
-                                row.put(columnName, value.toString());
+                                result.put("data", new JSONArray(value.toString()));
                             }
                         }
-                        dataArray.put(row);
                     }
-                    result.put("data", dataArray);
+                }
+            } else {
+                try {
+                    Object jsonResult = selectFunctionStatement.getObject(1);
+                    if (jsonResult != null) {
+                        String jsonString = jsonResult.toString();
+                        System.out.println("JSON result from OUT parameter: " + jsonString);
+                        try {
+                            result.put("data", new JSONArray(jsonString));
+                        } catch (Exception e) {
+                            System.err.println("Error parsing JSON result: " + e.getMessage());
+                            result.put("data", new JSONArray());
+                        }
+                    }
+                } catch (SQLException e) {
+                    // Игнорируем, если нет OUT параметра
                 }
             }
-
             System.out.println("Query completed successfully");
-
         } catch (Exception e) {
             System.err.println("Error executing function: " + e.getMessage());
             e.printStackTrace();

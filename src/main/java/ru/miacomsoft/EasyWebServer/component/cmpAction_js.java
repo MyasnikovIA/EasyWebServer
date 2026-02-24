@@ -226,7 +226,6 @@ public class cmpAction_js {
                     })
                     .then(function(dataObj) {
                         console.log('Response received:', dataObj);
-            
                         if (dataObj.redirect) {
                             if (window.saveDirect) {
                                 window.saveDirect('loginDirect');

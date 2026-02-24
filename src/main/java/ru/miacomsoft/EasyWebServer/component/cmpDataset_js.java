@@ -226,7 +226,7 @@ public class cmpDataset_js {
                             requestData[key]['len'] = varInfo['len'];
                         }
                     }
-                    fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + ((ctrlObj.getAttribute('pg_schema') || 'public') + '&database_name='+database_name+'&db_type='+db_type), {
+                                        fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + ((ctrlObj.getAttribute('pg_schema') || 'public') + '&database_name='+database_name+'&db_type='+db_type), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -238,7 +238,6 @@ public class cmpDataset_js {
                     })
                     .then(function(dataObj) {
                         console.log('Response received:', dataObj);
-            
                         if (dataObj['redirect']) {
                             if (window.saveDirect) {
                                 window.saveDirect('loginDirect');
