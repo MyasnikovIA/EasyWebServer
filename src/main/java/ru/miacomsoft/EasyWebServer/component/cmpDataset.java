@@ -132,8 +132,6 @@ public class cmpDataset extends Base {
             conn = DriverManager.getConnection(adminConfig.getJdbcUrl(), props);
 
             // Важно: CREATE DATABASE нельзя выполнять в транзакции
-            // Отключаем auto-commit, но для CREATE DATABASE это не имеет значения,
-            // так как PostgreSQL не поддерживает транзакции для DDL команд создания БД
             conn.setAutoCommit(true);
 
             // Определяем владельца БД (обычно тот же пользователь)
@@ -144,7 +142,6 @@ public class cmpDataset extends Base {
             String escapedOwner = owner.replace("\"", "\"\"");
 
             // Создаем базу данных с правильной кодировкой
-            // Используем template0 как рекомендовано для новой БД с UTF8
             String sql = String.format(
                     "CREATE DATABASE \"%s\" WITH OWNER = \"%s\" ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'C' TEMPLATE template0",
                     escapedDbName, escapedOwner
@@ -159,7 +156,7 @@ public class cmpDataset extends Base {
             try {
                 conn.commit();
             } catch (SQLException e) {
-                // Игнорируем, так как CREATE DATABASE не поддерживает commit
+                // Игнорируем
             }
 
             // Обновляем кэш
@@ -628,34 +625,49 @@ public class cmpDataset extends Base {
 
                     if (needToCreate) {
                         // Передаем debugMode в метод createSQL
-                        // Важно: используем обновленный dbConfig после создания БД
                         createSQL(fullFunctionName, pgSchema, element, docPath + " (" + element.attr("name") + ")", debugMode, dbConfig);
                     } else {
                         System.out.println("Function " + fullFunctionName + " already exists, skipping creation");
 
-                        // === НОВЫЙ КОД: Загружаем существующую функцию в procedureList ===
-                        // Создаем минимальный параметр для procedureList
+                        // === ЗАГРУЗКА СУЩЕСТВУЮЩЕЙ ФУНКЦИИ В procedureList ===
+                        // Создаем параметр для procedureList
                         HashMap<String, Object> param = new HashMap<String, Object>();
                         param.put("SQL", element.text().trim());
-                        param.put("vars", new ArrayList<String>());
-                        param.put("varTypes", new HashMap<String, String>());
+
+                        // Собираем информацию о переменных из дочерних элементов
+                        List<String> varsArr = new ArrayList<>();
+                        Map<String, String> varTypes = new HashMap<>();
+
+                        for (int numChild = 0; numChild < element.childrenSize(); numChild++) {
+                            Element itemElement = element.child(numChild);
+                            String tagName = itemElement.tag().toString().toLowerCase();
+
+                            if (tagName.indexOf("var") != -1) {
+                                Attributes attrsItem = itemElement.attributes();
+                                String nameItem = RemoveArrKeyRtrn(attrsItem, "name", "");
+                                String type = RemoveArrKeyRtrn(attrsItem, "type", "string");
+
+                                varsArr.add(nameItem);
+                                varTypes.put(nameItem, type);
+                            }
+                        }
+
+                        param.put("vars", varsArr);
+                        param.put("varTypes", varTypes);
                         param.put("dbConfig", dbConfig);
 
-                        // Формируем prepareCall для существующей функции
+                        // Формируем prepareCall для существующей функции - используем SELECT
+                        StringBuilder varsColl = new StringBuilder();
+                        for (int i = 0; i < varsArr.size(); i++) {
+                            if (i > 0) varsColl.append(",");
+                            varsColl.append("?");
+                        }
+
                         String prepareCall;
-                        if (element.childrenSize() == 0 || !hasVarElements(element)) {
-                            prepareCall = "{ ? = call " + pgSchema + "." + functionName + "() }";
+                        if (varsColl.length() == 0) {
+                            prepareCall = "SELECT " + pgSchema + "." + functionName + "()";
                         } else {
-                            // Если есть параметры, нужно их учесть
-                            StringBuilder varsColl = new StringBuilder();
-                            for (int i = 0; i < element.childrenSize(); i++) {
-                                Element child = element.child(i);
-                                if (child.tag().toString().toLowerCase().indexOf("var") != -1) {
-                                    if (varsColl.length() > 0) varsColl.append(",");
-                                    varsColl.append("?");
-                                }
-                            }
-                            prepareCall = "{ ? = call " + pgSchema + "." + functionName + "(" + varsColl.toString() + ") }";
+                            prepareCall = "SELECT " + pgSchema + "." + functionName + "(" + varsColl.toString() + ")";
                         }
 
                         param.put("prepareCall", prepareCall);
@@ -664,7 +676,7 @@ public class cmpDataset extends Base {
                         procedureList.put(fullFunctionName, param);
                         procedureList.put(functionName, param);
 
-                        System.out.println("Loaded existing function into procedureList: " + fullFunctionName);
+                        System.out.println("Loaded existing function into procedureList: " + fullFunctionName + " with prepareCall: " + prepareCall);
                         // ==============================================================
                     }
                 }
@@ -993,7 +1005,7 @@ public class cmpDataset extends Base {
                     dbConfig.setType("jdbc");
                 } else {
                     // Используем конфигурацию из ServerConstant
-                    dbConfig = ServerConstant.config.getDatabaseConfig("settings");
+                    dbConfig = ServerConstant.config.getDatabaseConfig("default");
                 }
             }
 
@@ -1033,108 +1045,58 @@ public class cmpDataset extends Base {
             String prepareCall = (String) param.get("prepareCall");
             System.out.println("PrepareCall: " + prepareCall);
 
-            // Проверяем тип вызова
-            if (prepareCall.contains("{ ? = call")) {
-                // Это функция, возвращающая значение - используем специальную обработку
-                selectFunctionStatement = conn.prepareCall(prepareCall);
+            // Для функций, возвращающих JSON, используем SELECT
+            selectFunctionStatement = conn.prepareCall(prepareCall);
 
-                // Регистрируем OUT параметр для результата
-                selectFunctionStatement.registerOutParameter(1, Types.OTHER);
+            List<String> varsArr = (List<String>) param.get("vars");
+            System.out.println("Vars array: " + varsArr);
 
-                List<String> varsArr = (List<String>) param.get("vars");
+            // Устанавливаем параметры (индексы с 1)
+            int ind = 1;
+            for (String varNameOne : varsArr) {
+                String valueStr = "";
+                String targetType = varTypes != null ? varTypes.getOrDefault(varNameOne, "string") : "string";
 
-                // Устанавливаем IN параметры (начиная с индекса 2)
-                int ind = 2;
-                for (String varNameOne : varsArr) {
-                    String valueStr = "";
-                    String targetType = varTypes != null ? varTypes.getOrDefault(varNameOne, "string") : "string";
-
-                    if (vars.has(varNameOne)) {
-                        Object varObj = vars.get(varNameOne);
-                        if (varObj instanceof JSONObject) {
-                            JSONObject varOne = (JSONObject) varObj;
-                            valueStr = varOne.optString("value", varOne.optString("defaultVal", ""));
-                        } else {
-                            valueStr = varObj.toString();
-                        }
+                if (vars.has(varNameOne)) {
+                    Object varObj = vars.get(varNameOne);
+                    if (varObj instanceof JSONObject) {
+                        JSONObject varOne = (JSONObject) varObj;
+                        valueStr = varOne.optString("value", varOne.optString("defaultVal", ""));
+                    } else {
+                        valueStr = varObj.toString();
                     }
-
-                    System.out.println("Setting parameter " + ind + " (" + varNameOne + "): " + valueStr + " (type: " + targetType + ")");
-                    setParameter(selectFunctionStatement, ind, valueStr, targetType, conn);
-                    ind++;
                 }
 
-                System.out.println("Executing function...");
-                selectFunctionStatement.execute();
+                System.out.println("Setting parameter " + ind + " (" + varNameOne + "): " + valueStr + " (type: " + targetType + ")");
+                setParameter(selectFunctionStatement, ind, valueStr, targetType, conn);
+                ind++;
+            }
 
-                // Получаем результат из OUT параметра
-                Object jsonResult = selectFunctionStatement.getObject(1);
-                if (jsonResult != null) {
-                    String jsonString = jsonResult.toString();
-                    System.out.println("JSON result: " + jsonString);
-                    try {
-                        result.put("data", new JSONArray(jsonString));
-                    } catch (Exception e) {
-                        System.err.println("Error parsing JSON result: " + e.getMessage());
-                        result.put("data", new JSONArray());
-                    }
-                } else {
-                    System.out.println("No data in result");
-                    result.put("data", new JSONArray());
-                }
-            } else {
-                // Обычный SELECT запрос
-                selectFunctionStatement = conn.prepareCall(prepareCall);
+            System.out.println("Executing query...");
+            boolean hasResults = selectFunctionStatement.execute();
+            System.out.println("Query executed, hasResults: " + hasResults);
 
-                List<String> varsArr = (List<String>) param.get("vars");
+            if (hasResults) {
+                rs = selectFunctionStatement.getResultSet();
+                if (rs != null) {
+                    JSONArray dataArray = new JSONArray();
+                    ResultSetMetaData metaData = rs.getMetaData();
+                    int columnCount = metaData.getColumnCount();
 
-                // Устанавливаем параметры
-                int ind = 1;
-                for (String varNameOne : varsArr) {
-                    String valueStr = "";
-                    String targetType = varTypes != null ? varTypes.getOrDefault(varNameOne, "string") : "string";
-
-                    if (vars.has(varNameOne)) {
-                        Object varObj = vars.get(varNameOne);
-                        if (varObj instanceof JSONObject) {
-                            JSONObject varOne = (JSONObject) varObj;
-                            valueStr = varOne.optString("value", varOne.optString("defaultVal", ""));
-                        } else {
-                            valueStr = varObj.toString();
-                        }
-                    }
-
-                    System.out.println("Setting parameter " + ind + " (" + varNameOne + "): " + valueStr + " (type: " + targetType + ")");
-                    setParameter(selectFunctionStatement, ind, valueStr, targetType, conn);
-                    ind++;
-                }
-
-                System.out.println("Executing query...");
-                boolean hasResults = selectFunctionStatement.execute();
-                System.out.println("Query executed, hasResults: " + hasResults);
-
-                if (hasResults) {
-                    rs = selectFunctionStatement.getResultSet();
-                    if (rs != null) {
-                        JSONArray dataArray = new JSONArray();
-                        ResultSetMetaData metaData = rs.getMetaData();
-                        int columnCount = metaData.getColumnCount();
-
-                        while (rs.next()) {
-                            JSONObject row = new JSONObject();
-                            for (int i = 1; i <= columnCount; i++) {
-                                String columnName = metaData.getColumnLabel(i);
-                                Object value = rs.getObject(i);
-                                if (value == null) {
-                                    row.put(columnName, JSONObject.NULL);
-                                } else {
-                                    row.put(columnName, value.toString());
-                                }
+                    while (rs.next()) {
+                        JSONObject row = new JSONObject();
+                        for (int i = 1; i <= columnCount; i++) {
+                            String columnName = metaData.getColumnLabel(i);
+                            Object value = rs.getObject(i);
+                            if (value == null) {
+                                row.put(columnName, JSONObject.NULL);
+                            } else {
+                                row.put(columnName, value.toString());
                             }
-                            dataArray.put(row);
                         }
-                        result.put("data", dataArray);
+                        dataArray.put(row);
                     }
+                    result.put("data", dataArray);
                 }
             }
 
@@ -1210,6 +1172,7 @@ public class cmpDataset extends Base {
             cs.setString(index, value);
         }
     }
+
     /**
      * Регистрирует OUT параметр
      */
@@ -1249,7 +1212,6 @@ public class cmpDataset extends Base {
                 break;
         }
     }
-
 
     /**
      * Вспомогательный метод для вычисления MD5 хэша
@@ -1573,6 +1535,7 @@ public class cmpDataset extends Base {
             return null;
         }
     }
+
     /**
      * Проверяет, доступна ли схема для текущего пользователя
      */
