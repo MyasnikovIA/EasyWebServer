@@ -17,7 +17,6 @@ public class cmpDataset_js {
                 window.cmpDatasetInitialized = true;
             
                 console.log('cmpDataset: JavaScript library initialized');
-            
                 /**
                  * Расширение D3Api для работы с датасетами
                  */
@@ -228,7 +227,7 @@ public class cmpDataset_js {
                         }
                     }
                     fetch('/{component}/cmpDataset?query_type=' + query_type + '&dataset_name=' + dataset_name + '&pg_schema=' + ((ctrlObj.getAttribute('pg_schema') || 'public') + '&database_name='+database_name+'&db_type='+db_type), {
-                        method: 'POST',query_type
+                        method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },

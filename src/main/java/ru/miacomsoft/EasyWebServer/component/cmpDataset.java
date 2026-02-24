@@ -701,7 +701,7 @@ public class cmpDataset extends Base {
             if (head != null && head.size() > 0) {
                 Elements existingScripts = head.select("script[src*='cmpDataset_js']");
                 if (existingScripts.isEmpty()) {
-                    String jsPath = "{component}/cmpDataset_js";
+                    String jsPath = "/{component}/cmpDataset_js";
                     head.append("<script cmp=\"dataset-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
                     System.out.println("cmpDataset: JavaScript library auto-included for dataset: " + name);
                 }
@@ -853,7 +853,9 @@ public class cmpDataset extends Base {
 
         String fullFunctionName = ServerConstant.config.APP_NAME + "_" + dataset_name;
         System.out.println("Java function exists check: " + ServerResourceHandler.javaStrExecut.existJavaFunction(fullFunctionName));
-        dataset_name = fullFunctionName;
+        if (query_type.equals("java")) {
+            dataset_name = fullFunctionName;
+        }
 
         if (ServerResourceHandler.javaStrExecut.existJavaFunction(dataset_name)) {
             // Обработка Java функции
