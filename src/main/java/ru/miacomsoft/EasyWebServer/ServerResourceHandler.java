@@ -149,15 +149,14 @@ public class ServerResourceHandler implements Runnable {
     private boolean readRequestHeader() throws IOException {
         int charInt;
         StringBuffer sb = new StringBuffer();
-
+        StringBuffer sbTmp = new StringBuffer();
         // читаем заголовок HTML запроса
         char[] bufferHead = new char[1024];
         char[] bufferArrHead = new char[0];
         char[] bufferArrPost = new char[0];
-
         while ((charInt = query.inputStreamReader.read(bufferHead)) > 0) {
             bufferArrHead = expandArray(bufferArrHead, bufferHead, charInt);
-
+            //String strHead = new String(bufferArrHead);
             int index = findSequence(bufferArrHead, "\r\r", true);
             if (index == -1) {
                 index = findSequence(bufferArrHead, "\r\n\r\n", true);
@@ -165,12 +164,13 @@ public class ServerResourceHandler implements Runnable {
             if (index == -1) {
                 index = findSequence(bufferArrHead, "\n\n", true);
             }
-
             if (index != -1) {
                 char[] beforeSequence = new char[index];
                 bufferArrPost = new char[bufferArrHead.length - index];
+                // Копируем данные до последовательности
                 System.arraycopy(bufferArrHead, 0, beforeSequence, 0, index);
                 sb.append(new String(beforeSequence));
+                // Копируем данные после последовательности и помещаем его в тело post запроса
                 System.arraycopy(bufferArrHead, index, bufferArrPost, 0, bufferArrPost.length);
                 break;
             }
@@ -178,275 +178,156 @@ public class ServerResourceHandler implements Runnable {
 
         query.typeQuery = "GET";
         query.headSrc = sb;
-
-        // Парсим заголовки
-        String headerStr = sb.toString();
-        String[] lines = headerStr.split("\\r\\n|\\n");
-
-        // Парсим первую строку запроса
-        parseRequestLine(query, lines);
-
-        // Парсим заголовки и Cookie
-        parseHeadersAndCookies(query, lines);
-
-        // Обработка тела запроса для POST, PUT, PATCH
-        if (Arrays.asList("POST", "PUT", "PATCH").contains(query.typeQuery)) {
-            // Проверяем наличие Transfer-Encoding: chunked
-            String transferEncoding = getHeaderValue(lines, "Transfer-Encoding");
-            String contentType = getHeaderValue(lines, "Content-Type");
-
-            if ("chunked".equalsIgnoreCase(transferEncoding)) {
-                // Обработка chunked encoding
-                handleChunkedEncoding(query, bufferArrPost);
-            } else {
-                // Обработка с Content-Length
-                String contentLengthStr = getHeaderValue(lines, "Content-Length");
-                if (!contentLengthStr.isEmpty()) {
-                    try {
-                        int contentLength = Integer.parseInt(contentLengthStr);
-                        handleContentLength(query, bufferArrPost, contentLength);
-                    } catch (NumberFormatException e) {
-                        System.err.println("Invalid Content-Length: " + contentLengthStr);
-                    }
+        if ((sb.toString().toLowerCase().indexOf("content-length: ")) != -1) {
+            // Читаем тело POST запроса
+            String sbTmp2 = "0";
+            if (sb.toString().indexOf("Content-Length: ") != -1) {
+                sbTmp2 = sb.toString().substring(sb.toString().indexOf("Content-Length: ") + "Content-Length: ".length(), sb.toString().length());
+            } else if ((sb.toString().toLowerCase().indexOf("content-length: ")) != -1) {
+                sbTmp2 = sb.toString().substring(sb.toString().indexOf("content-length: ") + "Content-Length: ".length(), sb.toString().length());
+            }
+            String lengPostStr = sbTmp2;
+            if (sbTmp2.indexOf("\n") != -1) {
+                lengPostStr = sbTmp2.substring(0, sbTmp2.indexOf("\n")).replace("\r", "");
+            }
+            int LengPOstBody = Integer.valueOf(lengPostStr);
+            if (LengPOstBody > 0) {
+                int maxArrBuf = 1024;
+                if (maxArrBuf > LengPOstBody) {
+                    maxArrBuf = LengPOstBody;
                 }
-            }
-
-            // Парсим тело POST запроса
-            if (query.postByte != null && query.postByte.length > 0) {
-                parsePostBody(query, query.postByte, contentType);
-            }
-        }
-
-        query.expansion = getFileExt(query.requestPath).toLowerCase();
-        query.session = getSession(query);
-
-        if (query.typeQuery.toUpperCase().equals("TERM")) {
-            sendResponseTerminal();
-            return false;
-        }
-
-        query.mimeType = getFileMime(query.requestPath);
-        return true;
-    }
-
-    /**
-     * Получает значение заголовка
-     */
-    private String getHeaderValue(String[] lines, String headerName) {
-        for (String line : lines) {
-            if (line.toLowerCase().startsWith(headerName.toLowerCase() + ":")) {
-                return line.substring(line.indexOf(':') + 1).trim();
-            }
-        }
-        return "";
-    }
-
-    /**
-     * Обрабатывает chunked encoding
-     */
-    private void handleChunkedEncoding(HttpExchange query, char[] alreadyRead) throws IOException {
-        ByteArrayOutputStream postDataStream = new ByteArrayOutputStream();
-        InputStream socketInputStream = query.socket.getInputStream();
-
-        // Записываем уже прочитанные данные
-        if (alreadyRead.length > 0) {
-            postDataStream.write(new String(alreadyRead).getBytes(StandardCharsets.UTF_8));
-        }
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(socketInputStream, StandardCharsets.UTF_8));
-
-        while (true) {
-            // Читаем размер чанка
-            String chunkSizeLine = reader.readLine();
-            if (chunkSizeLine == null) break;
-
-            // Парсим размер чанка (в hex)
-            int chunkSize;
-            try {
-                chunkSize = Integer.parseInt(chunkSizeLine.trim(), 16);
-            } catch (NumberFormatException e) {
-                // Это не размер чанка,可能是 данные
-                postDataStream.write(chunkSizeLine.getBytes(StandardCharsets.UTF_8));
-                postDataStream.write("\n".getBytes(StandardCharsets.UTF_8));
-                continue;
-            }
-
-            // Если размер чанка 0, это конец данных
-            if (chunkSize == 0) {
-                // Пропускаем финальные заголовки (если есть)
-                while ((chunkSizeLine = reader.readLine()) != null) {
-                    if (chunkSizeLine.isEmpty()) break;
-                }
-                break;
-            }
-
-            // Читаем данные чанка
-            char[] chunkData = new char[chunkSize];
-            int bytesRead = 0;
-            while (bytesRead < chunkSize) {
-                int read = reader.read(chunkData, bytesRead, chunkSize - bytesRead);
-                if (read == -1) break;
-                bytesRead += read;
-            }
-
-            postDataStream.write(new String(chunkData, 0, bytesRead).getBytes(StandardCharsets.UTF_8));
-
-            // Пропускаем \r\n после чанка
-            reader.readLine();
-        }
-
-        query.postByte = postDataStream.toByteArray();
-        query.postCharBody = new String(query.postByte, StandardCharsets.UTF_8).toCharArray();
-    }
-
-    /**
-     * Обрабатывает запрос с Content-Length
-     */
-    private void handleContentLength(HttpExchange query, char[] alreadyRead, int contentLength) throws IOException {
-        int alreadyReadBytes = new String(alreadyRead).getBytes(StandardCharsets.UTF_8).length;
-        int remainingToRead = contentLength - alreadyReadBytes;
-
-        if (remainingToRead > 0) {
-            ByteArrayOutputStream postDataStream = new ByteArrayOutputStream();
-
-            // Записываем уже прочитанные данные
-            if (alreadyRead.length > 0) {
-                postDataStream.write(new String(alreadyRead).getBytes(StandardCharsets.UTF_8));
-            }
-
-            // Читаем оставшиеся данные
-            byte[] buffer = new byte[8192];
-            InputStream socketInputStream = query.socket.getInputStream();
-            int totalRead = alreadyReadBytes;
-
-            // Устанавливаем таймаут на чтение
-            try {
-                query.socket.setSoTimeout(30000); // 30 секунд таймаут
-
-                while (totalRead < contentLength) {
-                    int bytesRead = socketInputStream.read(buffer);
-                    if (bytesRead == -1) {
-                        System.err.println("Connection closed. Read: " + totalRead + "/" + contentLength);
-                        break;
-                    }
-
-                    postDataStream.write(buffer, 0, bytesRead);
-                    totalRead += bytesRead;
-                }
-
-                // Восстанавливаем таймаут
-                query.socket.setSoTimeout(0);
-
-            } catch (java.net.SocketTimeoutException e) {
-                System.err.println("Timeout reading POST data. Read: " + totalRead + "/" + contentLength);
-                // Не прерываем выполнение, используем то, что успели прочитать
-            }
-
-            query.postByte = postDataStream.toByteArray();
-            query.postCharBody = new String(query.postByte, StandardCharsets.UTF_8).toCharArray();
-        } else {
-            // Все данные уже прочитаны
-            query.postCharBody = alreadyRead;
-            query.postByte = new String(alreadyRead).getBytes(StandardCharsets.UTF_8);
-        }
-    }
-
-    /**
-     * Парсит первую строку запроса
-     */
-    private void parseRequestLine(HttpExchange query, String[] lines) {
-        if (lines.length > 0) {
-            String[] requestLine = lines[0].split(" ");
-            if (requestLine.length >= 2) {
-                query.typeQuery = requestLine[0].toUpperCase();
-
-                String uri = requestLine[1];
-                try {
-                    uri = URLDecoder.decode(uri, StandardCharsets.UTF_8.name());
-                } catch (UnsupportedEncodingException e) {
-                    // Игнорируем
-                }
-
-                query.requestText = uri;
-                query.requestPath = uri;
-
-                // Разбираем параметры из URI
-                if (uri.contains("?")) {
-                    String[] parts = uri.split("\\?", 2);
-                    query.requestPath = parts[0];
-                    parseQueryParams(query, parts[1]);
-                }
-            }
-        }
-    }
-
-    /**
-     * Парсит тело POST запроса
-     */
-    private void parsePostBody(HttpExchange query, byte[] postBytes, String contentType) {
-        if (contentType.contains("application/json")) {
-            try {
-                query.messageJson = new JSONObject(new String(postBytes, StandardCharsets.UTF_8));
-            } catch (JSONException e) {
-                System.err.println("Error parsing JSON: " + e.getMessage());
-            }
-        } else if (contentType.contains("application/x-www-form-urlencoded")) {
-            String bodyStr = new String(postBytes, StandardCharsets.UTF_8);
-            parseQueryParams(query, bodyStr);
-        }
-        // Для других типов оставляем как есть
-    }
-
-    /**
-     * Парсит query параметры из строки
-     */
-    private void parseQueryParams(HttpExchange query, String queryString) {
-        for (String param : queryString.split("&")) {
-            if (param.isEmpty()) continue;
-            String[] keyValue = param.split("=", 2);
-            try {
-                String key = URLDecoder.decode(keyValue[0], StandardCharsets.UTF_8.name());
-                String value = keyValue.length > 1 ?
-                        URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8.name()) : "";
-
-                query.requestParam.put(key, value);
-                JSONObject obj = new JSONObject();
-                obj.put(key, value);
-                query.requestParamArray.put(obj);
-            } catch (UnsupportedEncodingException | JSONException e) {
-                System.err.println("Error parsing parameter: " + e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * Парсит заголовки и Cookie
-     */
-    private void parseHeadersAndCookies(HttpExchange query, String[] lines) {
-        for (int i = 1; i < lines.length; i++) {
-            String line = lines[i];
-            if (line.isEmpty()) continue;
-
-            int colonIndex = line.indexOf(':');
-            if (colonIndex == -1) continue;
-
-            String key = line.substring(0, colonIndex).trim();
-            String value = line.substring(colonIndex + 1).trim();
-
-            query.headers.put(key, value);
-
-            if ("Cookie".equalsIgnoreCase(key)) {
-                for (String cookiePair : value.split(";")) {
-                    String[] pair = cookiePair.trim().split("=", 2);
-                    if (pair.length == 2) {
-                        query.cookie.put(pair[0], pair[1]);
-                        if ("session".equalsIgnoreCase(pair[0])) {
-                            query.sessionID = pair[1];
+                int syzeDifference = LengPOstBody - bufferArrPost.length;
+                if ((syzeDifference == 4) || (syzeDifference == 2)) {
+                    //todo:
+                    // Подумать как переписать этот костыль.
+                } else if (bufferArrPost.length < LengPOstBody) {
+                    char[] bufferArr = new char[maxArrBuf];
+                    boolean isBreak = false;
+                    while ((charInt = query.inputStreamReader.read(bufferArr)) > 0 && isBreak == false) {
+                        bufferArrPost = expandArray(bufferArrPost, bufferArr, charInt);
+                        if (charInt < bufferArr.length) {
+                            break;
+                        }
+                        if (query.socket.isConnected() == false) {
+                            return false;
+                        }
+                        if (bufferArrPost.length > LengPOstBody) {
+                            isBreak = true;
+                            break;
                         }
                     }
                 }
+                query.postCharBody = bufferArrPost;
+                query.postByte = new String(bufferArrPost).getBytes(StandardCharsets.UTF_8);
+                query.typeQuery = "POST";
+                if (query.headers.containsKey("Content-Type")) {
+                    String contentType = ((String) query.headers.get("Content-Type")).toLowerCase();
+                    switch (contentType) {
+                        case "application/json":
+                            // Если тело — JSON, можно попытаться распарсить
+                            try {
+                                query.messageJson = new JSONObject(bufferArrPost);
+                            } catch (JSONException ignored) {
+                                /// todo: вернуть ошибку парсинга в JSON объект
+                                ignored.printStackTrace();
+                            }
+                            break;
+                        case "application/x-www-form-urlencoded":
+                            for (String param : new String(bufferArrPost).split("&")) {
+                                if (param.isEmpty()) continue;
+                                String[] keyValue = param.split("=", 2);
+                                String key = URLDecoder.decode(keyValue[0], StandardCharsets.UTF_8.name());
+                                String value = keyValue.length > 1 ? URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8.name()) : "";
+                                try {
+                                    query.requestParam.put(key, value);
+                                    JSONObject obj = new JSONObject();
+                                    obj.put(key, value);
+                                    query.requestParamArray.put(obj);
+                                } catch (JSONException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            break;
+                        default:
+                            /// todo: уточнить какие бывают форматы и дописать их обработку
+                    }
+                    ;
+                }
             }
         }
+        // Парсим заголовок
+        int indLine = 0;
+        for (String titleLine : sb.toString().split("\r")) {
+            titleLine = titleLine.replace("\n", "");
+            indLine++;
+            if (indLine == 1) {
+                int lenTitle = titleLine.length();
+                titleLine.substring(0, titleLine.indexOf(" "));
+                query.typeQuery = titleLine.substring(0, titleLine.indexOf(" "));
+                titleLine = titleLine.substring(titleLine.indexOf(query.typeQuery) + query.typeQuery.length() + 2);
+                if (titleLine.contains(" HTTP/")) {
+                    int httpIndex = titleLine.lastIndexOf(" HTTP/");
+                    if (httpIndex > 0) {
+                        titleLine = titleLine.substring(0, httpIndex);
+                    }
+                }
+                if (titleLine.trim().length() == 0) {
+                    titleLine = ServerConstant.config.INDEX_PAGE;
+                }
+                titleLine = URLDecoder.decode(titleLine, StandardCharsets.UTF_8.toString());
+                query.requestText = titleLine;
+                query.requestPath = titleLine;
+
+                // Разбираем параметры из URI
+                if (titleLine.contains("?")) {
+                    String[] parts = titleLine.split("\\?", 2);
+                    query.requestPath = parts[0];
+
+                    for (String param : parts[1].split("&")) {
+                        if (param.isEmpty()) continue;
+                        String[] keyValue = param.split("=", 2);
+                        String key = URLDecoder.decode(keyValue[0], StandardCharsets.UTF_8.name());
+                        String value = keyValue.length > 1 ? URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8.name()) : "";
+                        try {
+                            query.requestParam.put(key, value);
+                            JSONObject obj = new JSONObject();
+                            obj.put(key, value);
+                            query.requestParamArray.put(obj);
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    query.requestPath = query.requestText.substring(0, query.requestText.indexOf("?"));
+                }
+            } else {
+                if (titleLine.indexOf(":") != -1) {
+                    String key = titleLine.substring(0, titleLine.indexOf(":")).trim();
+                    String val = titleLine.substring(titleLine.indexOf(":") + 1).trim();
+                    query.headers.put(key, val);
+                    switch (key) {
+                        case "Cookie":
+                            for (String elem : val.split("; ")) {
+                                String[] valSubArr = elem.split("=");
+                                if (valSubArr.length == 2) {
+                                    query.cookie.put(valSubArr[0], valSubArr[1]);
+                                    if ((valSubArr[0].trim()).toLowerCase().equals("session")) {
+                                        query.sessionID = valSubArr[1];
+                                    }
+                                }
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+        query.expansion = getFileExt(query.requestPath).toLowerCase();
+        query.session = getSession(query); // генерация или зпгрузка старой сессии
+        if (query.typeQuery.toUpperCase().equals("TERM")) { // Обработка запроса с терминала
+            sendResponseTerminal();
+            return false;
+        }
+        query.mimeType = getFileMime(query.requestPath);
+        return true;
     }
 
     /**
