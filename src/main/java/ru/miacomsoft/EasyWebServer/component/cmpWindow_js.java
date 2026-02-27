@@ -84,7 +84,7 @@ public class cmpWindow_js {
                         let modal = options.modal !== false;
                         let width = options.width || 500;
                         let height = options.height || 400;
-                        let caption = options.caption || 'Окно';
+                        let caption = options.caption || '';
                         let theme = options.theme || 'modern';
                         let url = options.url || '';
                         
