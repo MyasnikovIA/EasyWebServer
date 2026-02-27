@@ -149,6 +149,7 @@ public class cmpWindow_js {
                             this.element = null;
                             this.overlay = null;
                             this.iframe = null;
+                            this.iframeOverlay = null; // Временный DIV для перекрытия iframe
                             this.title = null;
                             this.titleRow = null;
                             
@@ -226,6 +227,63 @@ public class cmpWindow_js {
                             console.log('DWindow initialized successfully');
                         }
                         
+                        /**
+                         * Создает временный DIV для перекрытия iframe
+                         */
+                        createIframeOverlay() {
+                            if (!this.iframe || this.iframeOverlay) return;
+                            
+                            // Определяем курсор в зависимости от режима
+                            let cursor = 'default';
+                            if (this.dragging) {
+                                cursor = 'move';
+                            } else if (this.resizing) {
+                                switch (this.resizeType) {
+                                    case 'resize-n': cursor = 'n-resize'; break;
+                                    case 'resize-s': cursor = 's-resize'; break;
+                                    case 'resize-e': cursor = 'e-resize'; break;
+                                    case 'resize-w': cursor = 'w-resize'; break;
+                                    case 'resize-ne': cursor = 'ne-resize'; break;
+                                    case 'resize-nw': cursor = 'nw-resize'; break;
+                                    case 'resize-se': cursor = 'se-resize'; break;
+                                    case 'resize-sw': cursor = 'sw-resize'; break;
+                                }
+                            }
+                            
+                            // Создаем DIV-оверлей
+                            this.iframeOverlay = document.createElement('div');
+                            this.iframeOverlay.className = 'window-iframe-overlay';
+                            this.iframeOverlay.style.cssText = `
+                                position: absolute;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                background: transparent;
+                                z-index: 10000;
+                                cursor: ${cursor};
+                            `;
+                            
+                            // Добавляем оверлей в контейнер контента (поверх iframe)
+                            let contentDiv = this.element.querySelector('.window-content');
+                            if (contentDiv) {
+                                contentDiv.appendChild(this.iframeOverlay);
+                            }
+                            
+                            console.log('Iframe overlay created with cursor:', cursor);
+                        }
+                        
+                        /**
+                         * Удаляет временный DIV для перекрытия iframe
+                         */
+                        removeIframeOverlay() {
+                            if (this.iframeOverlay && this.iframeOverlay.parentNode) {
+                                this.iframeOverlay.parentNode.removeChild(this.iframeOverlay);
+                                this.iframeOverlay = null;
+                                console.log('Iframe overlay removed');
+                            }
+                        }
+                        
                         setupIframeMessaging() {
                             if (!this.iframe) return;
                             
@@ -269,226 +327,240 @@ public class cmpWindow_js {
                         }
                         
                         initEventHandlers() {
-                                                     if (!this.element) return;
-                
-                                                     // Используем стрелочные функции для сохранения контекста this
-                                                     this.handleMouseMove = (e) => {
-                                                         if (this.dragging) {
-                                                             this.onDrag(e);
-                                                         } else if (this.resizing) {
-                                                             this.onResize(e);
-                                                         }
-                                                     };
-                                                                             this.handleMouseUp = (e) => {
-                                                         if (this.dragging) {
-                                                             this.stopDrag(e);
-                                                         } else if (this.resizing) {
-                                                             this.stopResize(e);
-                                                         }
-                                                     };
-                
-                                                     // Перемещение окна
-                                                     if (this.titleRow) {
-                                                         this.titleRow.addEventListener('mousedown', (e) => {
-                                                             // Проверяем, что нажата левая кнопка мыши (button 0)
-                                                             if (e.button !== 0) return;
-                                                             this.startDrag(e);
-                                                         });
-                                                         this.titleRow.addEventListener('dblclick', (e) => this.toggleMaximize(e));
-                                                     }
-                
-                                                     // Изменение размера - все возможные handle-ы
-                                                     let resizeHandles = this.element.querySelectorAll('[data-role^="resize-"]');
-                                                     resizeHandles.forEach(handle => {
-                                                         handle.addEventListener('mousedown', (e) => {
-                                                             // Проверяем, что нажата левая кнопка мыши (button 0)
-                                                             if (e.button !== 0) return;
-                                                             let role = handle.getAttribute('data-role');
-                                                             this.startResize(e, role);
-                                                         });
-                                                     });
-                
-                                                     // Кнопки управления
-                                                     let closeBtn = this.element.querySelector('[data-role="close"]');
-                                                     if (closeBtn) {
-                                                         closeBtn.addEventListener('click', (e) => this.close());
-                                                     }
-                
-                                                     let maximizeBtn = this.element.querySelector('[data-role="maximize"]');
-                                                     if (maximizeBtn) {
-                                                         maximizeBtn.addEventListener('click', (e) => this.toggleMaximize(e));
-                                                     }
-                
-                                                     let reloadBtn = this.element.querySelector('[data-role="reload"]');
-                                                     if (reloadBtn) {
-                                                         reloadBtn.addEventListener('click', (e) => this.reload());
-                                                     }
-                
-                                                     // Предотвращаем выделение при перетаскивании
-                                                     this.element.addEventListener('selectstart', (e) => e.preventDefault());
-                
-                                                     // Добавляем глобальные обработчики один раз
-                                                     document.addEventListener('mousemove', this.handleMouseMove);
-                                                     document.addEventListener('mouseup', this.handleMouseUp);
-                                                 }
+                            if (!this.element) return;
+                            
+                            // Используем стрелочные функции для сохранения контекста this
+                            this.handleMouseMove = (e) => {
+                                if (this.dragging) {
+                                    this.onDrag(e);
+                                } else if (this.resizing) {
+                                    this.onResize(e);
+                                }
+                            };
+                            
+                            this.handleMouseUp = (e) => {
+                                if (this.dragging) {
+                                    this.stopDrag(e);
+                                } else if (this.resizing) {
+                                    this.stopResize(e);
+                                }
+                                
+                                // Удаляем оверлей после отпускания кнопки мыши
+                                this.removeIframeOverlay();
+                            };
+
+                            // Перемещение окна
+                            if (this.titleRow) {
+                                this.titleRow.addEventListener('mousedown', (e) => {
+                                    // Проверяем, что нажата левая кнопка мыши (button 0)
+                                    if (e.button !== 0) return;
+                                    this.startDrag(e);
+                                });
+                                this.titleRow.addEventListener('dblclick', (e) => this.toggleMaximize(e));
+                            }
+
+                            // Изменение размера - все возможные handle-ы
+                            let resizeHandles = this.element.querySelectorAll('[data-role^="resize-"]');
+                            resizeHandles.forEach(handle => {
+                                handle.addEventListener('mousedown', (e) => {
+                                    // Проверяем, что нажата левая кнопка мыши (button 0)
+                                    if (e.button !== 0) return;
+                                    let role = handle.getAttribute('data-role');
+                                    this.startResize(e, role);
+                                });
+                            });
+
+                            // Кнопки управления
+                            let closeBtn = this.element.querySelector('[data-role="close"]');
+                            if (closeBtn) {
+                                closeBtn.addEventListener('click', (e) => this.close());
+                            }
+
+                            let maximizeBtn = this.element.querySelector('[data-role="maximize"]');
+                            if (maximizeBtn) {
+                                maximizeBtn.addEventListener('click', (e) => this.toggleMaximize(e));
+                            }
+
+                            let reloadBtn = this.element.querySelector('[data-role="reload"]');
+                            if (reloadBtn) {
+                                reloadBtn.addEventListener('click', (e) => this.reload());
+                            }
+
+                            // Предотвращаем выделение при перетаскивании
+                            this.element.addEventListener('selectstart', (e) => e.preventDefault());
+
+                            // Добавляем глобальные обработчики один раз
+                            document.addEventListener('mousemove', this.handleMouseMove);
+                            document.addEventListener('mouseup', this.handleMouseUp);
+                        }
                         
                         startDrag(e) {
-                                                     if (this.maximized) return;
-                
-                                                     e.preventDefault();
-                
-                                                     let rect = this.element.getBoundingClientRect();
-                                                     this.dragOffset = {
-                                                         x: e.clientX - rect.left,
-                                                         y: e.clientY - rect.top
-                                                     };
-                
-                                                     this.dragging = true;
-                                                     this.resizing = false; // Убеждаемся, что не в режиме изменения размера
-                                                     document.body.classList.add('noselect');
-                                                     if (this.titleRow) {
-                                                         this.titleRow.classList.add('dragging');
-                                                     }
-                
-                                                     this.originalPosition = {
-                                                         left: rect.left,
-                                                         top: rect.top
-                                                     };
-                                                 }
+                            if (this.maximized) return;
+                            
+                            e.preventDefault();
+                            
+                            let rect = this.element.getBoundingClientRect();
+                            this.dragOffset = {
+                                x: e.clientX - rect.left,
+                                y: e.clientY - rect.top
+                            };
+                            
+                            this.dragging = true;
+                            this.resizing = false;
+                            document.body.classList.add('noselect');
+                            if (this.titleRow) {
+                                this.titleRow.classList.add('dragging');
+                            }
+                            
+                            this.originalPosition = {
+                                left: rect.left,
+                                top: rect.top
+                            };
+                            
+                            // Создаем оверлей для iframe
+                            this.createIframeOverlay();
+                        }
                         
                         onDrag(e) {
                             if (!this.dragging) return;
-                
+                            
                             e.preventDefault();
-                
+                            
                             let left = e.clientX - this.dragOffset.x;
                             let top = e.clientY - this.dragOffset.y;
-                
+                            
                             // Ограничиваем перемещение в пределах окна просмотра
                             let maxLeft = window.innerWidth - this.element.offsetWidth;
                             let maxTop = window.innerHeight - this.element.offsetHeight;
-                
+                            
                             left = Math.max(0, Math.min(left, maxLeft));
                             top = Math.max(0, Math.min(top, maxTop));
-                
+                            
                             this.element.style.left = left + 'px';
                             this.element.style.top = top + 'px';
                             this.element.style.transform = 'none';
                         }
                         
-                       stopDrag(e) {
+                        stopDrag(e) {
                             if (!this.dragging) return;
-                
+                            
                             this.dragging = false;
                             document.body.classList.remove('noselect');
                             if (this.titleRow) {
                                 this.titleRow.classList.remove('dragging');
                             }
-                
+                            
                             this.dispatchEvent('move', {
                                 left: parseInt(this.element.style.left),
                                 top: parseInt(this.element.style.top)
                             });
+                            
+                            // Оверлей удаляется в handleMouseUp
                         }
                         
                         startResize(e, type) {
-                                                     e.preventDefault();
-                
-                                                     this.resizing = true;
-                                                     this.dragging = false; // Убеждаемся, что не в режиме перемещения
-                                                     this.resizeType = type;
-                
-                                                     let rect = this.element.getBoundingClientRect();
-                                                     this.startResizeData = {
-                                                         x: e.clientX,
-                                                         y: e.clientY,
-                                                         width: rect.width,
-                                                         height: rect.height,
-                                                         left: rect.left,
-                                                         top: rect.top,
-                                                         right: rect.right,
-                                                         bottom: rect.bottom
-                                                     };
-                
-                                                     document.body.classList.add('noselect');
-                                                 }
+                            e.preventDefault();
+                            
+                            this.resizing = true;
+                            this.dragging = false;
+                            this.resizeType = type;
+                            
+                            let rect = this.element.getBoundingClientRect();
+                            this.startResizeData = {
+                                x: e.clientX,
+                                y: e.clientY,
+                                width: rect.width,
+                                height: rect.height,
+                                left: rect.left,
+                                top: rect.top,
+                                right: rect.right,
+                                bottom: rect.bottom
+                            };
+                            
+                            document.body.classList.add('noselect');
+                            
+                            // Создаем оверлей для iframe
+                            this.createIframeOverlay();
+                        }
                         
                         onResize(e) {
-                                                     if (!this.resizing) return;
-                
-                                                     e.preventDefault();
-                
-                                                     let dx = e.clientX - this.startResizeData.x;
-                                                     let dy = e.clientY - this.startResizeData.y;
-                
-                                                     let newWidth = this.startResizeData.width;
-                                                     let newHeight = this.startResizeData.height;
-                                                     let newLeft = this.startResizeData.left;
-                                                     let newTop = this.startResizeData.top;
-                
-                                                     switch (this.resizeType) {
-                                                         case 'resize-se':
-                                                             newWidth = Math.max(this.minWidth, this.startResizeData.width + dx);
-                                                             newHeight = Math.max(this.minHeight, this.startResizeData.height + dy);
-                                                             break;
-                                                         case 'resize-e':
-                                                             newWidth = Math.max(this.minWidth, this.startResizeData.width + dx);
-                                                             break;
-                                                         case 'resize-s':
-                                                             newHeight = Math.max(this.minHeight, this.startResizeData.height + dy);
-                                                             break;
-                                                         case 'resize-w':
-                                                             newWidth = Math.max(this.minWidth, this.startResizeData.width - dx);
-                                                             newLeft = this.startResizeData.right - newWidth;
-                                                             break;
-                                                         case 'resize-n':
-                                                             newHeight = Math.max(this.minHeight, this.startResizeData.height - dy);
-                                                             newTop = this.startResizeData.bottom - newHeight;
-                                                             break;
-                                                         case 'resize-ne':
-                                                             newWidth = Math.max(this.minWidth, this.startResizeData.width + dx);
-                                                             newHeight = Math.max(this.minHeight, this.startResizeData.height - dy);
-                                                             newTop = this.startResizeData.bottom - newHeight;
-                                                             break;
-                                                         case 'resize-nw':
-                                                             newWidth = Math.max(this.minWidth, this.startResizeData.width - dx);
-                                                             newHeight = Math.max(this.minHeight, this.startResizeData.height - dy);
-                                                             newLeft = this.startResizeData.right - newWidth;
-                                                             newTop = this.startResizeData.bottom - newHeight;
-                                                             break;
-                                                         case 'resize-sw':
-                                                             newWidth = Math.max(this.minWidth, this.startResizeData.width - dx);
-                                                             newHeight = Math.max(this.minHeight, this.startResizeData.height + dy);
-                                                             newLeft = this.startResizeData.right - newWidth;
-                                                             break;
-                                                     }
-                
-                                                     // Применяем новые размеры и позицию
-                                                     this.element.style.width = newWidth + 'px';
-                                                     this.element.style.height = newHeight + 'px';
-                                                     this.element.style.left = newLeft + 'px';
-                                                     this.element.style.top = newTop + 'px';
-                                                     this.element.style.transform = 'none';
-                
-                                                     // Уведомляем iframe об изменении размера
-                                                     this.sendToIframe({
-                                                         command: 'resized',
-                                                         width: newWidth,
-                                                         height: newHeight
-                                                     });
-                                                 }
+                            if (!this.resizing) return;
+                            
+                            e.preventDefault();
+                            
+                            let dx = e.clientX - this.startResizeData.x;
+                            let dy = e.clientY - this.startResizeData.y;
+                            
+                            let newWidth = this.startResizeData.width;
+                            let newHeight = this.startResizeData.height;
+                            let newLeft = this.startResizeData.left;
+                            let newTop = this.startResizeData.top;
+                            
+                            switch (this.resizeType) {
+                                case 'resize-se':
+                                    newWidth = Math.max(this.minWidth, this.startResizeData.width + dx);
+                                    newHeight = Math.max(this.minHeight, this.startResizeData.height + dy);
+                                    break;
+                                case 'resize-e':
+                                    newWidth = Math.max(this.minWidth, this.startResizeData.width + dx);
+                                    break;
+                                case 'resize-s':
+                                    newHeight = Math.max(this.minHeight, this.startResizeData.height + dy);
+                                    break;
+                                case 'resize-w':
+                                    newWidth = Math.max(this.minWidth, this.startResizeData.width - dx);
+                                    newLeft = this.startResizeData.right - newWidth;
+                                    break;
+                                case 'resize-n':
+                                    newHeight = Math.max(this.minHeight, this.startResizeData.height - dy);
+                                    newTop = this.startResizeData.bottom - newHeight;
+                                    break;
+                                case 'resize-ne':
+                                    newWidth = Math.max(this.minWidth, this.startResizeData.width + dx);
+                                    newHeight = Math.max(this.minHeight, this.startResizeData.height - dy);
+                                    newTop = this.startResizeData.bottom - newHeight;
+                                    break;
+                                case 'resize-nw':
+                                    newWidth = Math.max(this.minWidth, this.startResizeData.width - dx);
+                                    newHeight = Math.max(this.minHeight, this.startResizeData.height - dy);
+                                    newLeft = this.startResizeData.right - newWidth;
+                                    newTop = this.startResizeData.bottom - newHeight;
+                                    break;
+                                case 'resize-sw':
+                                    newWidth = Math.max(this.minWidth, this.startResizeData.width - dx);
+                                    newHeight = Math.max(this.minHeight, this.startResizeData.height + dy);
+                                    newLeft = this.startResizeData.right - newWidth;
+                                    break;
+                            }
+                            
+                            // Применяем новые размеры и позицию
+                            this.element.style.width = newWidth + 'px';
+                            this.element.style.height = newHeight + 'px';
+                            this.element.style.left = newLeft + 'px';
+                            this.element.style.top = newTop + 'px';
+                            this.element.style.transform = 'none';
+                            
+                            // Уведомляем iframe об изменении размера
+                            this.sendToIframe({
+                                command: 'resized',
+                                width: newWidth,
+                                height: newHeight
+                            });
+                        }
                         
-                                                 stopResize(e) {
-                                                     if (!this.resizing) return;
-                
-                                                     this.resizing = false;
-                                                     document.body.classList.remove('noselect');
-                
-                                                     this.dispatchEvent('resize', {
-                                                         width: this.element.offsetWidth,
-                                                         height: this.element.offsetHeight
-                                                     });
-                                                 }
+                        stopResize(e) {
+                            if (!this.resizing) return;
+                            
+                            this.resizing = false;
+                            document.body.classList.remove('noselect');
+                            
+                            this.dispatchEvent('resize', {
+                                width: this.element.offsetWidth,
+                                height: this.element.offsetHeight
+                            });
+                            
+                            // Оверлей удаляется в handleMouseUp
+                        }
                         
                         toggleMaximize(e) {
                             if (this.maximized) {
