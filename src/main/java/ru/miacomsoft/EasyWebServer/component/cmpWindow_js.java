@@ -15,19 +15,13 @@ public class cmpWindow_js {
         StringBuilder js = new StringBuilder();
         js.append("""
             (function() {
-                // Предотвращаем повторную инициализацию
                 if (window.cmpWindowInitialized) return;
-                
-                console.log('cmpWindow (DIV version): Waiting for D3Api initialization...');
-                
                 // Функция ожидания инициализации D3Api
                 function waitForD3Api(callback) {
                     function checkD3Api() {
                         if (typeof window.D3Api !== 'undefined' && 
                             window.D3Api !== null && 
                             typeof window.D3Api.setVar === 'function') {
-                            
-                            console.log('cmpWindow (DIV version): D3Api detected, initializing...');
                             callback();
                             return;
                         }
@@ -41,10 +35,6 @@ public class cmpWindow_js {
                 function initialize() {
                     if (window.cmpWindowInitialized) return;
                     window.cmpWindowInitialized = true;
-                    
-                    console.log('cmpWindow (DIV version): JavaScript library initialized');
-                    
-                    // ============== Вспомогательные функции ==============
                     
                     function removeElement(el) {
                         if (el && el.parentNode) {
@@ -133,9 +123,7 @@ public class cmpWindow_js {
                         
                         return windowHtml;
                     }
-                    
-                    // ============== Класс DWindow ==============
-                    
+
                     class DWindow {
                         constructor(options) {
                             this.options = options || {};
@@ -172,7 +160,6 @@ public class cmpWindow_js {
                         }
                         
                         init() {
-                            console.log('DWindow.init() started with options:', this.options);
                             
                             // Создаем временный контейнер и парсим HTML
                             let temp = document.createElement('div');
@@ -223,8 +210,6 @@ public class cmpWindow_js {
                             
                             // Настраиваем обработку сообщений от iframe
                             this.setupIframeMessaging();
-                            
-                            console.log('DWindow initialized successfully');
                         }
                         
                         /**
@@ -269,8 +254,6 @@ public class cmpWindow_js {
                             if (contentDiv) {
                                 contentDiv.appendChild(this.iframeOverlay);
                             }
-                            
-                            console.log('Iframe overlay created with cursor:', cursor);
                         }
                         
                         /**
@@ -280,7 +263,6 @@ public class cmpWindow_js {
                             if (this.iframeOverlay && this.iframeOverlay.parentNode) {
                                 this.iframeOverlay.parentNode.removeChild(this.iframeOverlay);
                                 this.iframeOverlay = null;
-                                console.log('Iframe overlay removed');
                             }
                         }
                         
@@ -289,8 +271,6 @@ public class cmpWindow_js {
                             
                             window.addEventListener('message', (event) => {
                                 if (event.source === this.iframe.contentWindow) {
-                                    console.log('Message from iframe:', event.data);
-                                    
                                     if (event.data && event.data.command) {
                                         switch (event.data.command) {
                                             case 'close':
@@ -454,8 +434,6 @@ public class cmpWindow_js {
                                 left: parseInt(this.element.style.left),
                                 top: parseInt(this.element.style.top)
                             });
-                            
-                            // Оверлей удаляется в handleMouseUp
                         }
                         
                         startResize(e, type) {
@@ -485,9 +463,8 @@ public class cmpWindow_js {
                         
                         onResize(e) {
                             if (!this.resizing) return;
-                            
                             e.preventDefault();
-                            
+
                             let dx = e.clientX - this.startResizeData.x;
                             let dy = e.clientY - this.startResizeData.y;
                             
@@ -558,8 +535,6 @@ public class cmpWindow_js {
                                 width: this.element.offsetWidth,
                                 height: this.element.offsetHeight
                             });
-                            
-                            // Оверлей удаляется в handleMouseUp
                         }
                         
                         toggleMaximize(e) {
@@ -634,9 +609,6 @@ public class cmpWindow_js {
                         
                         show() {
                             if (this.closed) return;
-                            
-                            console.log('DWindow.show() called');
-                            
                             // Показываем окно
                             this.element.style.display = 'flex';
                             
@@ -648,11 +620,8 @@ public class cmpWindow_js {
                             // Добавляем анимацию
                             this.element.classList.add('animate');
                             setTimeout(() => this.element.classList.remove('animate'), 300);
-                            
                             this.dispatchEvent('show');
                             this.sendToIframe({ command: 'show' });
-                            
-                            console.log('DWindow.show() completed');
                         }
                         
                         hide() {
@@ -717,9 +686,6 @@ public class cmpWindow_js {
                             }
                         }
                     }
-                    
-                    // ============== Функции открытия окон ==============
-                    
                     window.openD3Form = function(name, modal, data) {
                         data = data || {};
                         data.modal = modal;
@@ -728,9 +694,6 @@ public class cmpWindow_js {
                         if (name.indexOf('.') === -1) {
                             url = name + '.html';
                         }
-                        
-                        console.log('openD3Form (DIV version): creating window with url:', url);
-                        
                         let win = new DWindow({
                             modal: modal,
                             width: data.width || 500,
@@ -748,7 +711,6 @@ public class cmpWindow_js {
                         
                         // Добавляем обработчик загрузки iframe
                         win.iframe.addEventListener('load', function() {
-                            console.log('Iframe loaded for window');
                             
                             win.sendToIframe({
                                 command: 'init',
@@ -779,8 +741,6 @@ public class cmpWindow_js {
                         });
                         
                         win.addListener('message', (msg) => {
-                            console.log('Message from iframe:', msg);
-                            
                             if (msg.command === 'ready') {
                                 console.log('Iframe ready');
                             } else if (msg.command === 'close') {
@@ -801,25 +761,17 @@ public class cmpWindow_js {
                         // Таймаут для показа окна, если iframe долго загружается
                         setTimeout(() => {
                             if (win && !win.closed && win.element && win.element.style.display === 'none') {
-                                console.log('openD3Form: timeout - showing window anyway');
                                 win.show();
                             }
                         }, 2000);
                         
                         // Сохраняем ссылку на окно в элементе для доступа из кнопок
                         win.element.__win = win;
-                        
-                        console.log('openD3Form (DIV version): window created');
-                        
                         return win;
                     };
                     
                     // ============== Добавление методов в D3Api ==============
-                    
-                    console.log('cmpWindow (DIV version): Adding methods to D3Api');
-                    
                     window.D3Api.Window = DWindow;
-                    
                     window.D3Api.openWindow = function(options) {
                         return new DWindow(options);
                     };
@@ -922,10 +874,7 @@ public class cmpWindow_js {
                         
                         return win;
                     };
-                    
-                    console.log('cmpWindow (DIV version): D3Api extended with modern window methods');
                 }
-                
                 waitForD3Api(initialize);
             })();
             """);
