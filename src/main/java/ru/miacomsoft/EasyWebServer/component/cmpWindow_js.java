@@ -17,16 +17,14 @@ public class cmpWindow_js {
             (function() {
                 if (window.cmpWindowInitialized) return;
                 
-                // Функция ожидания инициализации D3Api с колбэком
+                // Функция ожидания инициализации D3Api
                 function waitForD3Api(callback) {
                     function checkD3Api() {
                         if (typeof window.D3Api !== 'undefined' && 
-                            window.D3Api !== null && 
-                            typeof window.D3Api.setVar === 'function') {
+                            window.D3Api !== null) {
                             callback();
                             return;
                         }
-                        // Используем requestAnimationFrame вместо setTimeout для колбэка
                         requestAnimationFrame(checkD3Api);
                     }
                     checkD3Api();
@@ -36,14 +34,19 @@ public class cmpWindow_js {
                     if (window.cmpWindowInitialized) return;
                     window.cmpWindowInitialized = true;
                     
+                    console.log('cmpWindow: Initializing window component');
+                    
                     // Хранилище для всех созданных окон
                     if (!window.__d3Windows) window.__d3Windows = {};
                     
-                    // Хранилище для индивидуальных объектов D3Api каждого окна
-                    if (!window.__d3WindowApis) window.__d3WindowApis = {};
-                    
                     // Текущее активное окно
                     var _activeWindow = null;
+                    
+                    // Хранилище для колбэков при переходе на новую страницу
+                    if (!window.__pageCallbacks) window.__pageCallbacks = {};
+                    
+                    // ID текущей навигации (для страниц)
+                    var _currentNavId = null;
                     
                     function removeElement(el) {
                         if (el && el.parentNode) {
@@ -86,29 +89,207 @@ public class cmpWindow_js {
                     }
 
                     /**
-                     * Функция для получения активного окна (глобальная)
+                     * Функция для получения активного окна
                      */
                     window.getPage = function() {
-                        return _activeWindow ? _activeWindow.windowD3Api : null;
+                        return _activeWindow ? _activeWindow.D3Api : null;
                     };
 
                     /**
-                     * Глобальная функция для закрытия текущего окна и передачи результата
+                     * Глобальная функция для закрытия текущего окна
+                     * Эта функция вызывается из дочернего окна
                      */
                     window.close = function(result) {
+                        console.log('window.close called with result:', result);
+                        
+                        // Проверяем, есть ли активное окно (модальное)
                         if (_activeWindow) {
                             _activeWindow.close(result);
-                        } else {
-                            // Если нет активного окна, пробуем найти последнее созданное
-                            var windows = Object.values(window.__d3Windows);
-                            if (windows.length > 0) {
-                                windows[windows.length - 1].close(result);
+                            return;
+                        }
+                        
+                        // Проверяем, есть ли сохраненный navId для возврата
+                        var navId = sessionStorage.getItem('currentNavId');
+                        if (navId) {
+                            var returnUrl = sessionStorage.getItem('returnUrl_' + navId);
+                            if (returnUrl) {
+                                // Сохраняем результат для родительской страницы
+                                sessionStorage.setItem('pageResult_' + navId, JSON.stringify(result));
+                                // Возвращаемся на родительскую страницу
+                                window.location.href = returnUrl;
+                                return;
                             }
+                        }
+                        
+                        // Если ничего не нашли, просто идем назад
+                        window.history.back();
+                        if (result) {
+                            sessionStorage.setItem('pageResult', JSON.stringify(result));
                         }
                     };
 
                     /**
-                     * Генерация HTML для окна с использованием DIV верстки
+                     * Функция для перехода на новую страницу
+                     */
+                    function navigateToPage(url, data) {
+                        var navigationId = 'nav_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                        
+                        // Сохраняем текущий navId
+                        sessionStorage.setItem('currentNavId', navigationId);
+                        
+                        // Сохраняем URL для возврата
+                        sessionStorage.setItem('returnUrl_' + navigationId, window.location.href);
+                        
+                        // Сохраняем все колбэки
+                        var callbacks = {
+                            onclose: data.onclose ? data.onclose.toString() : null,
+                            oncreate: data.oncreate ? data.oncreate.toString() : null,
+                            onshow: data.onshow ? data.onshow.toString() : null,
+                            vars: data.vars || {},
+                            navigationId: navigationId,
+                            returnUrl: window.location.href
+                        };
+                        
+                        sessionStorage.setItem('pageCallbacks_' + navigationId, JSON.stringify(callbacks));
+                        
+                        var separator = url.indexOf('?') === -1 ? '?' : '&';
+                        var targetUrl = url + separator + '_navId=' + encodeURIComponent(navigationId);
+                        
+                        console.log('Navigating to:', targetUrl);
+                        window.location.href = targetUrl;
+                    }
+
+                    /**
+                     * Функция для восстановления колбэков при загрузке страницы
+                     */
+                    function restorePageCallbacks() {
+                        var urlParams = new URLSearchParams(window.location.search);
+                        var navId = urlParams.get('_navId');
+                        
+                        if (navId) {
+                            console.log('Restoring page callbacks for navId:', navId);
+                            _currentNavId = navId;
+                            
+                            var callbacksJson = sessionStorage.getItem('pageCallbacks_' + navId);
+                            if (callbacksJson) {
+                                try {
+                                    var callbacks = JSON.parse(callbacksJson);
+                                    
+                                    var restoredData = {
+                                        vars: callbacks.vars || {},
+                                        returnUrl: callbacks.returnUrl
+                                    };
+                                    
+                                    if (callbacks.onclose) {
+                                        restoredData.onclose = new Function('return ' + callbacks.onclose)();
+                                    }
+                                    debugger
+                                    if (callbacks.oncreate) {
+                                        restoredData.oncreate = new Function('return ' + callbacks.oncreate)();
+                                    }
+                                    
+                                    if (callbacks.onshow) {
+                                        restoredData.onshow = new Function('return ' + callbacks.onshow)();
+                                    }
+                                    
+                                    window.__pageCallbacks[navId] = restoredData;
+                                    
+                                    // Создаем объект страницы с правильным методом close
+                                    var pageObject = {
+                                        D3Api: Object.create(window.D3Api)
+                                    };
+                                    
+                                    // Добавляем методы для работы с этой страницей
+                                    pageObject.D3Api.close = function(result) {
+                                        console.log('Page close called with result:', result);
+                                        if (restoredData.returnUrl) {
+                                            sessionStorage.setItem('pageResult_' + navId, JSON.stringify(result));
+                                            window.location.href = restoredData.returnUrl;
+                                        }
+                                    };
+                                    
+                                    pageObject.D3Api.getVar = function(name, defValue) {
+                                        return restoredData.vars ? restoredData.vars[name] : defValue;
+                                    };
+                                    
+                                    pageObject.D3Api.setVar = function(name, value) {
+                                        if (!restoredData.vars) restoredData.vars = {};
+                                        restoredData.vars[name] = value;
+                                    };
+                                    
+                                    _activeWindow = pageObject;
+
+                                    debugger                                    
+                                    // Вызываем oncreate если есть
+                                    if (restoredData.oncreate) {
+                                        console.log('Calling oncreate');
+                                        restoredData.oncreate.call(pageObject.D3Api, pageObject.D3Api);
+                                    }
+                                    
+                                    // Вызываем onshow если есть
+                                    if (restoredData.onshow) {
+                                        console.log('Calling onshow');
+                                        requestAnimationFrame(function() {
+                                            restoredData.onshow.call(pageObject.D3Api, pageObject.D3Api);
+                                        });
+                                    }
+                                    
+                                } catch (e) {
+                                    console.error('Failed to restore page callbacks:', e);
+                                }
+                            }
+                        } else {
+                            // Проверяем, нет ли результата от дочерней страницы
+                            checkForPageResult();
+                        }
+                    }
+                    
+                    /**
+                     * Проверяет наличие результата от дочерней страницы
+                     */
+                    function checkForPageResult() {
+                        // Ищем все ключи pageResult_ в sessionStorage
+                        var resultKeys = [];
+                        for (var i = 0; i < sessionStorage.length; i++) {
+                            var key = sessionStorage.key(i);
+                            if (key && key.startsWith('pageResult_')) {
+                                resultKeys.push(key);
+                            }
+                        }
+                        
+                        if (resultKeys.length > 0) {
+                            // Берем первый найденный результат
+                            var resultKey = resultKeys[0];
+                            try {
+                                var resultJson = sessionStorage.getItem(resultKey);
+                                var result = JSON.parse(resultJson);
+                                sessionStorage.removeItem(resultKey);
+                                
+                                var navId = resultKey.replace('pageResult_', '');
+                                console.log('Found page result for navId:', navId, result);
+                                
+                                // Очищаем связанные данные
+                                sessionStorage.removeItem('currentNavId');
+                                sessionStorage.removeItem('returnUrl_' + navId);
+                                
+                                var callbacks = window.__pageCallbacks[navId];
+                                if (callbacks && callbacks.onclose) {
+                                    console.log('Calling onclose with result:', result);
+                                    callbacks.onclose(result);
+                                }
+                                
+                                // Очищаем колбэки
+                                sessionStorage.removeItem('pageCallbacks_' + navId);
+                                delete window.__pageCallbacks[navId];
+                                
+                            } catch (e) {
+                                console.error('Failed to process page result:', e);
+                            }
+                        }
+                    }
+
+                    /**
+                     * Генерация HTML для окна
                      */
                     function getWindowXml(options) {
                         options = options || {};
@@ -119,13 +300,11 @@ public class cmpWindow_js {
                         let theme = options.theme || 'modern';
                         let url = options.url || '';
                         
-                        // Создаем overlay
                         let overlay = '';
                         if (modal) {
                             overlay = '<div class="win_overlow"></div>';
                         }
                         
-                        // Создаем окно на DIV-ах
                         let windowHtml = overlay + `
                             <div class="window ${theme}" style="width: ${width}px; height: ${height}px; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; position: fixed; z-index: 9999; background: white; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
                                 <div class="window-header" data-role="title-row" style="color: rgb(50,50,50);display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f0f0f0; border-bottom: 1px solid #ccc; cursor: move; border-radius: 8px 8px 0 0;">
@@ -140,7 +319,6 @@ public class cmpWindow_js {
                                     <iframe class="window-iframe" data-role="iframe" src="${url}" frameborder="0" style="width: 100%; height: 100%; border: none; display: block;"></iframe>
                                 </div>
                                 
-                                <!-- Handles для изменения размера -->
                                 <div class="window-resize-handle resize-n" data-role="resize-n" style="position: absolute; top: 0; left: 5px; right: 5px; height: 5px; cursor: n-resize;"></div>
                                 <div class="window-resize-handle resize-s" data-role="resize-s" style="position: absolute; bottom: 0; left: 5px; right: 5px; height: 5px; cursor: s-resize;"></div>
                                 <div class="window-resize-handle resize-e" data-role="resize-e" style="position: absolute; top: 5px; right: 0; bottom: 5px; width: 5px; cursor: e-resize;"></div>
@@ -168,7 +346,7 @@ public class cmpWindow_js {
                             this.element = null;
                             this.overlay = null;
                             this.iframe = null;
-                            this.iframeOverlay = null; // Временный DIV для перекрытия iframe
+                            this.iframeOverlay = null;
                             this.title = null;
                             this.titleRow = null;
                             
@@ -187,168 +365,88 @@ public class cmpWindow_js {
                             this.originalSize = null;
                             this.messageHandlers = {};
                             
-                            // Индивидуальный D3Api для этого окна
-                            this.windowD3Api = null;
+                            // Локальные переменные окна
+                            this._vars = {};
                             
-                            // Сохраняем ссылку на окно в глобальном хранилище
+                            // Создаем объект D3Api для этого окна на основе глобального D3Api
+                            this.D3Api = Object.create(window.D3Api);
+                            
+                            var self = this;
+                            
+                            // Переопределяем методы для работы с локальными переменными
+                            this.D3Api.setVar = function(name, value) {
+                                self._vars[name] = value;
+                            };
+                            
+                            this.D3Api.getVar = function(name, defValue) {
+                                return self._vars[name] !== undefined ? self._vars[name] : defValue;
+                            };
+                            
+                            // Переопределяем методы для работы с контролами окна
+                            this.D3Api.setValue = function(name, value) {
+                                var ctrl = self.element.querySelector('[name="' + name + '"]');
+                                if (ctrl) {
+                                    if (ctrl.tagName.toLowerCase() === 'input') {
+                                        if (ctrl.type === 'checkbox') {
+                                            ctrl.checked = (value === true || value === 'on' || value === 'true');
+                                        } else {
+                                            ctrl.value = value;
+                                        }
+                                    } else if (ctrl.tagName.toLowerCase() === 'select' || ctrl.tagName.toLowerCase() === 'textarea') {
+                                        ctrl.value = value;
+                                    } else {
+                                        ctrl.textContent = value;
+                                    }
+                                }
+                            };
+                            
+                            this.D3Api.getValue = function(name, defValue) {
+                                var ctrl = self.element.querySelector('[name="' + name + '"]');
+                                if (ctrl) {
+                                    if (ctrl.tagName.toLowerCase() === 'input') {
+                                        if (ctrl.type === 'checkbox') {
+                                            return ctrl.checked;
+                                        } else {
+                                            return ctrl.value || defValue;
+                                        }
+                                    } else if (ctrl.tagName.toLowerCase() === 'select' || ctrl.tagName.toLowerCase() === 'textarea') {
+                                        return ctrl.value || defValue;
+                                    } else {
+                                        return ctrl.textContent || defValue;
+                                    }
+                                }
+                                return defValue;
+                            };
+                            
+                            // Переопределяем методы для работы с подписями
+                            this.D3Api.setCaption = function(text) {
+                                self.setCaption(text);
+                            };
+                            
+                            this.D3Api.getCaption = function() {
+                                return self.title ? self.title.textContent : '';
+                            };
+                            
+                            // Добавляем метод закрытия окна
+                            this.D3Api.close = function(result) {
+                                self.close(result);
+                            };
+                            
+                            // Сохраняем ссылку на окно
                             this.windowId = 'win_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                             window.__d3Windows[this.windowId] = this;
-                            
-                            // Создаем индивидуальный D3Api для этого окна
-                            this.createWindowD3Api();
                             
                             this.init();
                         }
                         
-                        /**
-                         * Создает индивидуальный объект D3Api для этого окна
-                         */
-                        createWindowD3Api() {
-                            var self = this;
-                            
-                            // Базовый объект D3Api для окна
-                            this.windowD3Api = {
-                                _windowId: self.windowId,
-                                _vars: {},
-                                _session: {},
-                                _ctrl: {},
-                                
-                                // Работа с переменными окна
-                                setVar: function(name, value) {
-                                    self._vars = self._vars || {};
-                                    self._vars[name] = value;
-                                    this._vars[name] = value;
-                                },
-                                
-                                getVar: function(name, defValue) {
-                                    self._vars = self._vars || {};
-                                    return self._vars[name] !== undefined ? self._vars[name] : defValue;
-                                },
-                                
-                                // Работа с сессией окна
-                                setSession: function(name, value) {
-                                    self._session = self._session || {};
-                                    self._session[name] = value;
-                                    this._session[name] = value;
-                                },
-                                
-                                getSession: function(name, defValue) {
-                                    self._session = self._session || {};
-                                    return self._session[name] !== undefined ? self._session[name] : defValue;
-                                },
-                                
-                                // Работа с контролами окна
-                                setValue: function(name, value) {
-                                    var ctrl = self.element.querySelector('[name="' + name + '"]');
-                                    if (ctrl) {
-                                        if (ctrl.tagName.toLowerCase() === 'input') {
-                                            if (ctrl.type === 'checkbox') {
-                                                ctrl.checked = (value === true || value === 'on' || value === 'true');
-                                            } else {
-                                                ctrl.value = value;
-                                            }
-                                        } else if (ctrl.tagName.toLowerCase() === 'select' || ctrl.tagName.toLowerCase() === 'textarea') {
-                                            ctrl.value = value;
-                                        } else {
-                                            ctrl.textContent = value;
-                                        }
-                                    }
-                                },
-                                
-                                getValue: function(name, defValue) {
-                                    var ctrl = self.element.querySelector('[name="' + name + '"]');
-                                    if (ctrl) {
-                                        if (ctrl.tagName.toLowerCase() === 'input') {
-                                            if (ctrl.type === 'checkbox') {
-                                                return ctrl.checked;
-                                            } else {
-                                                return ctrl.value || defValue;
-                                            }
-                                        } else if (ctrl.tagName.toLowerCase() === 'select' || ctrl.tagName.toLowerCase() === 'textarea') {
-                                            return ctrl.value || defValue;
-                                        } else {
-                                            return ctrl.textContent || defValue;
-                                        }
-                                    }
-                                    return defValue;
-                                },
-                                
-                                // Метод для получения самого окна (для расширенного доступа)
-                                getWindow: function() {
-                                    return self;
-                                },
-                                
-                                // Закрытие окна
-                                close: function(result) {
-                                    self.close(result);
-                                },
-                                
-                                // Отправка сообщения в родительское окно
-                                sendToParent: function(message) {
-                                    if (window.parent && window.parent !== window) {
-                                        window.parent.postMessage(message, '*');
-                                    }
-                                },
-                                
-                                // Добавление слушателя событий
-                                on: function(event, callback) {
-                                    self.addListener(event, callback);
-                                    return this;
-                                },
-                                
-                                // Установка заголовка
-                                setCaption: function(text) {
-                                    self.setCaption(text);
-                                    return this;
-                                },
-                                
-                                // Изменение размера
-                                setSize: function(width, height) {
-                                    self.setSize(width, height);
-                                    return this;
-                                },
-                                
-                                // Центрирование
-                                center: function() {
-                                    self.center();
-                                    return this;
-                                },
-                                
-                                // Показать
-                                show: function() {
-                                    self.show();
-                                    return this;
-                                },
-                                
-                                // Скрыть
-                                hide: function() {
-                                    self.hide();
-                                    return this;
-                                },
-                                
-                                // Перезагрузить iframe
-                                reload: function() {
-                                    self.reload();
-                                    return this;
-                                }
-                            };
-                            
-                            // Сохраняем в глобальном хранилище
-                            window.__d3WindowApis[this.windowId] = this.windowD3Api;
-                        }
-                        
                         init() {
-                            
-                            // Создаем временный контейнер и парсим HTML
-                            let temp = document.createElement('div');
+                            var temp = document.createElement('div');
                             temp.innerHTML = getWindowXml(this.options);
                             
-                            // Находим overlay (первый дочерний элемент)
                             if (this.modal) {
                                 this.overlay = temp.querySelector('.win_overlow');
                             }
                             
-                            // Находим окно
                             this.element = temp.querySelector('.window');
                             
                             if (!this.element) {
@@ -356,47 +454,26 @@ public class cmpWindow_js {
                                 return;
                             }
                             
-                            // Находим элементы внутри окна
                             this.iframe = this.element.querySelector('[data-role="iframe"]');
                             this.title = this.element.querySelector('[data-role="title"]');
                             this.titleRow = this.element.querySelector('[data-role="title-row"]');
                             
-                            // Добавляем в DOM
                             if (this.overlay) {
                                 document.body.appendChild(this.overlay);
                                 this.overlay.style.display = 'none';
                             }
                             document.body.appendChild(this.element);
                             
-                            // Устанавливаем display: none для элемента (на всякий случай)
                             this.element.style.display = 'none';
                             
-                            // Проверяем, что все элементы найдены
-                            if (!this.iframe) {
-                                console.warn('Iframe element not found in window');
-                            }
-                            
-                            if (!this.titleRow) {
-                                console.warn('Title row element not found in window');
-                            }
-                            
-                            // Инициализируем обработчики
                             this.initEventHandlers();
-                            
-                            // Сохраняем оригинальные размеры и позицию
                             this.originalSize = { width: this.width, height: this.height };
-                            
-                            // Настраиваем обработку сообщений от iframe
                             this.setupIframeMessaging();
                         }
                         
-                        /**
-                         * Создает временный DIV для перекрытия iframe
-                         */
                         createIframeOverlay() {
                             if (!this.iframe || this.iframeOverlay) return;
                             
-                            // Определяем курсор в зависимости от режима
                             let cursor = 'default';
                             if (this.dragging) {
                                 cursor = 'move';
@@ -413,7 +490,6 @@ public class cmpWindow_js {
                                 }
                             }
                             
-                            // Создаем DIV-оверлей
                             this.iframeOverlay = document.createElement('div');
                             this.iframeOverlay.className = 'window-iframe-overlay';
                             this.iframeOverlay.style.cssText = `
@@ -427,16 +503,12 @@ public class cmpWindow_js {
                                 cursor: ${cursor};
                             `;
                             
-                            // Добавляем оверлей в контейнер контента (поверх iframe)
                             let contentDiv = this.element.querySelector('.window-content');
                             if (contentDiv) {
                                 contentDiv.appendChild(this.iframeOverlay);
                             }
                         }
                         
-                        /**
-                         * Удаляет временный DIV для перекрытия iframe
-                         */
                         removeIframeOverlay() {
                             if (this.iframeOverlay && this.iframeOverlay.parentNode) {
                                 this.iframeOverlay.parentNode.removeChild(this.iframeOverlay);
@@ -446,6 +518,7 @@ public class cmpWindow_js {
                         
                         setupIframeMessaging() {
                             if (!this.iframe) return;
+                            
                             window.addEventListener('message', (event) => {
                                 if (event.source === this.iframe.contentWindow) {
                                     if (event.data && event.data.command) {
@@ -467,7 +540,6 @@ public class cmpWindow_js {
                                                 }
                                         }
                                     }
-                                    
                                     this.dispatchEvent('message', event.data);
                                 }
                             });
@@ -486,7 +558,6 @@ public class cmpWindow_js {
                         initEventHandlers() {
                             if (!this.element) return;
                             
-                            // Используем стрелочные функции для сохранения контекста this
                             this.handleMouseMove = (e) => {
                                 if (this.dragging) {
                                     this.onDrag(e);
@@ -501,33 +572,26 @@ public class cmpWindow_js {
                                 } else if (this.resizing) {
                                     this.stopResize(e);
                                 }
-                                
-                                // Удаляем оверлей после отпускания кнопки мыши
                                 this.removeIframeOverlay();
                             };
 
-                            // Перемещение окна
                             if (this.titleRow) {
                                 this.titleRow.addEventListener('mousedown', (e) => {
-                                    // Проверяем, что нажата левая кнопка мыши (button 0)
                                     if (e.button !== 0) return;
                                     this.startDrag(e);
                                 });
                                 this.titleRow.addEventListener('dblclick', (e) => this.toggleMaximize(e));
                             }
 
-                            // Изменение размера - все возможные handle-ы
                             let resizeHandles = this.element.querySelectorAll('[data-role^="resize-"]');
                             resizeHandles.forEach(handle => {
                                 handle.addEventListener('mousedown', (e) => {
-                                    // Проверяем, что нажата левая кнопка мыши (button 0)
                                     if (e.button !== 0) return;
                                     let role = handle.getAttribute('data-role');
                                     this.startResize(e, role);
                                 });
                             });
 
-                            // Кнопки управления
                             let closeBtn = this.element.querySelector('[data-role="close"]');
                             if (closeBtn) {
                                 closeBtn.addEventListener('click', (e) => this.close());
@@ -543,10 +607,8 @@ public class cmpWindow_js {
                                 reloadBtn.addEventListener('click', (e) => this.reload());
                             }
 
-                            // Предотвращаем выделение при перетаскивании
                             this.element.addEventListener('selectstart', (e) => e.preventDefault());
 
-                            // Добавляем глобальные обработчики один раз
                             document.addEventListener('mousemove', this.handleMouseMove);
                             document.addEventListener('mouseup', this.handleMouseUp);
                         }
@@ -574,7 +636,6 @@ public class cmpWindow_js {
                                 top: rect.top
                             };
                             
-                            // Создаем оверлей для iframe
                             this.createIframeOverlay();
                         }
                         
@@ -586,7 +647,6 @@ public class cmpWindow_js {
                             let left = e.clientX - this.dragOffset.x;
                             let top = e.clientY - this.dragOffset.y;
                             
-                            // Ограничиваем перемещение в пределах окна просмотра
                             let maxLeft = window.innerWidth - this.element.offsetWidth;
                             let maxTop = window.innerHeight - this.element.offsetHeight;
                             
@@ -633,8 +693,6 @@ public class cmpWindow_js {
                             };
                             
                             document.body.classList.add('noselect');
-                            
-                            // Создаем оверлей для iframe
                             this.createIframeOverlay();
                         }
                         
@@ -687,14 +745,12 @@ public class cmpWindow_js {
                                     break;
                             }
                             
-                            // Применяем новые размеры и позицию
                             this.element.style.width = newWidth + 'px';
                             this.element.style.height = newHeight + 'px';
                             this.element.style.left = newLeft + 'px';
                             this.element.style.top = newTop + 'px';
                             this.element.style.transform = 'none';
                             
-                            // Уведомляем iframe об изменении размера
                             this.sendToIframe({
                                 command: 'resized',
                                 width: newWidth,
@@ -716,7 +772,6 @@ public class cmpWindow_js {
                         
                         toggleMaximize(e) {
                             if (this.maximized) {
-                                // Восстанавливаем размеры
                                 this.element.style.width = this.originalSize.width + 'px';
                                 this.element.style.height = this.originalSize.height + 'px';
                                 if (this.originalPosition) {
@@ -732,12 +787,10 @@ public class cmpWindow_js {
                                     this.overlay.style.display = 'block';
                                 }
                             } else {
-                                // Сохраняем текущие размеры
                                 let rect = this.element.getBoundingClientRect();
                                 this.originalPosition = { left: rect.left, top: rect.top };
                                 this.originalSize = { width: rect.width, height: rect.height };
                                 
-                                // На весь экран
                                 this.element.style.left = '0';
                                 this.element.style.top = '0';
                                 this.element.style.width = '100%';
@@ -787,27 +840,22 @@ public class cmpWindow_js {
                         show() {
                             if (this.closed) return;
                             
-                            // Устанавливаем как активное окно
                             _activeWindow = this;
                             
-                            // Показываем окно
                             this.element.style.display = 'flex';
                             
-                            // Показываем overlay если нужно
                             if (this.overlay && this.modal) {
                                 this.overlay.style.display = 'block';
                             }
                             
-                            // Добавляем анимацию
                             this.element.classList.add('animate');
                             
-                            // !!! ТОЧКА ЗАПУСКА onshow !!!
-                            // Здесь вызывается колбэк onshow после отображения окна
                             var self = this;
                             requestAnimationFrame(function() {
                                 self.element.classList.remove('animate');
                                 if (self.options.onshow && typeof self.options.onshow === 'function') {
-                                    self.options.onshow.call(self.windowD3Api, self.windowD3Api);
+                                    //self.options.onshow.call(self.D3Api, self.D3Api);
+                                    self.options.onshow.call(self.D3Api, self);
                                 }
                                 self.dispatchEvent('show');
                             });
@@ -829,7 +877,6 @@ public class cmpWindow_js {
                             
                             this.closed = true;
                             
-                            // !!! ТОЧКА ЗАПУСКА beforeClose !!!
                             this.dispatchEvent('beforeClose', result);
                             
                             this.sendToIframe({ command: 'close', result: result });
@@ -841,14 +888,10 @@ public class cmpWindow_js {
                                 removeElement(this.overlay);
                             }
                             
-                            // Удаляем из глобальных хранилищ
                             delete window.__d3Windows[this.windowId];
-                            delete window.__d3WindowApis[this.windowId];
                             
-                            // !!! ТОЧКА ЗАПУСКА onclose !!!
                             this.dispatchEvent('close', result);
                             
-                            // Сбрасываем активное окно если это было оно
                             if (_activeWindow === this) {
                                 _activeWindow = null;
                             }
@@ -899,7 +942,24 @@ public class cmpWindow_js {
                             url = name + '.html';
                         }
                         
-                        console.log('openD3Form: creating window with url:', url, 'data:', data);
+                        console.log('openD3Form:', modal ? 'modal' : 'page', url);
+                        
+                        if (modal === false) {
+                            navigateToPage(url, data);
+                            // Возвращаем объект с методом close, который будет работать
+                            return {
+                                close: function(result) {
+                                    window.close(result);
+                                },
+                                // Добавляем заглушки для остальных методов
+                                setVar: function() {},
+                                getVar: function() {},
+                                setValue: function() {},
+                                getValue: function() {},
+                                setCaption: function() {},
+                                getCaption: function() {}
+                            };
+                        }
                         
                         let win = new DWindow({
                             modal: modal,
@@ -908,36 +968,95 @@ public class cmpWindow_js {
                             caption: data.caption || 'Окно',
                             theme: data.theme || 'modern',
                             url: url,
-                            onshow: data.onshow  // Сохраняем колбэк onshow
+                            onshow: data.onshow
                         });
                         
-                        // Проверяем, что окно создалось успешно
                         if (!win.element || !win.iframe) {
                             console.error('Failed to create window properly');
                             return null;
                         }
                         
-                        // Добавляем обработчик загрузки iframe
                         win.iframe.addEventListener('load', function() {
-                            console.log('Iframe loaded for window, sending init data:', data.vars);
-                            
-                            // Отправляем переменные в iframe
-                            win.sendToIframe({
-                                command: 'init',
-                                data: data.vars || {}  // Передаем vars в iframe
-                            });
-                            
-                            // Показываем окно после загрузки iframe
-                            win.show();
-                            
-                            // !!! ТОЧКА ЗАПУСКА oncreate !!!
-                            // Здесь вызывается колбэк oncreate после создания окна
-                            if (data.oncreate && typeof data.oncreate === 'function') {
-                                data.oncreate.call(win.windowD3Api, win.windowD3Api);
+                            const iframe = win.iframe;
+                            win.document = iframe.contentDocument || iframe.contentWindow.document;
+                        
+                            // Функция для загрузки скрипта синхронно
+                            function loadScriptSync(src) {
+                                return new Promise((resolve, reject) => {
+                                    const script = win.document.createElement('script');
+                                    script.src = src;
+                                    script.type = 'text/javascript';
+                                    script.setAttribute('cmp', 'jslib');
+                        
+                                    script.onload = () => {
+                                        console.log(`Script loaded: ${src}`);
+                                        resolve();
+                                    };
+                        
+                                    script.onerror = () => {
+                                        console.error(`Failed to load script: ${src}`);
+                                        reject(new Error(`Failed to load script: ${src}`));
+                                    };
+                        
+                                    win.document.head.appendChild(script);
+                                });
                             }
+                        
+                            // Функция для загрузки всех библиотек синхронно
+                            async function loadLibraries() {
+                                try {
+                                    // Заменяем {component} на актуальный путь
+                                    // Убедитесь, что переменная component определена где-то выше
+                                    const componentPath = window.component || ''; // или другой способ получения пути
+                        
+                                    const scripts = [
+                                        `/{component}/main_js`,
+                                        `/{component}/md5`
+                                    ];
+                        
+                                    // Загружаем скрипты последовательно (синхронно)
+                                    for (const scriptSrc of scripts) {
+                                        await loadScriptSync(scriptSrc);
+                                    }
+                        
+                                    console.log('All libraries loaded successfully');
+                                    return true;
+                                } catch (error) {
+                                    console.error('Error loading libraries:', error);
+                                    return false;
+                                }
+                            }
+                        
+                            // Загружаем библиотеки и продолжаем инициализацию
+                            loadLibraries().then((success) => {
+                                if (success) {
+                                    // Библиотеки загружены, продолжаем
+                                    const form = win.document.querySelector('[cmptype="Form"]');
+                        
+                                    if (form) {
+                                        win.caption = form.getAttribute('caption');
+                                        const title = win.element.querySelector('[data-role="title"]');
+                                        title.innerText = win.caption;
+                                    }
+                        
+                                    win.sendToIframe({
+                                        command: 'init',
+                                        data: data.vars || {}
+                                    });
+                        
+                                    win.show();
+                                    debugger;
+                        
+                                    if (data.oncreate && typeof data.oncreate === 'function') {
+                                        data.oncreate.call(win.D3Api, win);
+                                    }
+                                } else {
+                                    console.error('Failed to load required libraries');
+                                    // Здесь можно добавить обработку ошибки загрузки
+                                }
+                            });
                         });
                         
-                        // Добавляем обработчик ошибки загрузки iframe
                         win.iframe.addEventListener('error', function() {
                             console.error('Failed to load iframe content:', url);
                             let contentDiv = win.element.querySelector('.window-content');
@@ -952,10 +1071,7 @@ public class cmpWindow_js {
                             win.show();
                         });
                         
-                        // Обработчик сообщений от iframe
                         win.addListener('message', (msg) => {
-                            console.log('Message from iframe:', msg);
-                            
                             if (msg.command === 'ready') {
                                 console.log('Iframe ready');
                             } else if (msg.command === 'close') {
@@ -969,153 +1085,44 @@ public class cmpWindow_js {
                             }
                         });
                         
-                        // Сохраняем обработчики onclose
                         if (data.onclose) {
-                            // Если передан массив функций
                             if (Array.isArray(data.onclose)) {
                                 data.onclose.forEach(callback => {
                                     if (typeof callback === 'function') {
                                         win.addListener('close', (result) => callback(result));
                                     }
                                 });
-                            }
-                            // Если передана одна функция
-                            else if (typeof data.onclose === 'function') {
+                            } else if (typeof data.onclose === 'function') {
                                 win.addListener('close', (result) => data.onclose(result));
                             }
                         }
                         
-                        // Сохраняем ссылку на окно в элементе для доступа из кнопок
                         win.element.__win = win;
                         
-                        console.log('openD3Form: window created');
-                        return win.windowD3Api; // Возвращаем индивидуальный D3Api объекта, а не само окно
+                        return win.D3Api;
                     };
                     
-                    // ============== Добавление методов в глобальный D3Api ==============
-                    
-                    // Добавляем метод для получения активного окна
-                    window.D3Api.getPage = function() {
-                        return _activeWindow ? _activeWindow.windowD3Api : null;
-                    };
-                    
-                    // Добавляем метод для закрытия текущего окна
-                    window.D3Api.close = function(result) {
-                        if (_activeWindow) {
-                            _activeWindow.close(result);
-                        } else {
-                            // Если нет активного окна, пробуем найти последнее созданное
-                            var windows = Object.values(window.__d3Windows);
-                            if (windows.length > 0) {
-                                windows[windows.length - 1].close(result);
-                            }
-                        }
-                    };
-                    
-                    window.D3Api.Window = DWindow;
-                    
-                    window.D3Api.openWindow = function(options) {
-                        return new DWindow(options);
-                    };
-                    
+                    // Расширяем глобальный D3Api методами для работы с окнами
                     window.D3Api.openD3Form = function(name, modal, data) {
                         return window.openD3Form(name, modal, data);
                     };
                     
-                    window.D3Api.showModal = function(content, options) {
-                        options = options || {};
-                        options.modal = true;
-                        
-                        if (typeof content === 'string' && !content.startsWith('http')) {
-                            options.url = 'data:text/html;charset=utf-8,' + encodeURIComponent(content);
-                        } else {
-                            options.url = content;
-                        }
-                        
-                        let win = new DWindow(options);
-                        win.show();
-                        
-                        return win.windowD3Api;
+                    window.D3Api.getPage = function() {
+                        return _activeWindow ? _activeWindow.D3Api : null;
                     };
                     
-                    window.D3Api.showAlert = function(message, title, callback) {
-                        let content = `
-                            <!DOCTYPE html>
-                            <html>
-                            <head>
-                                <style>
-                                    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; text-align: center; }
-                                    .message { margin: 30px 0; font-size: 16px; }
-                                    button { padding: 8px 25px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-                                    button:hover { background: #45a049; }
-                                </style>
-                            </head>
-                            <body>
-                                <div class="message">${message}</div>
-                                <button onclick="window.parent.postMessage({command: 'close'}, '*')">OK</button>
-                                <script>
-                                    window.parent.postMessage({command: 'ready'}, '*');
-                                </script>
-                            </body>
-                            </html>
-                        `;
-                        
-                        return window.D3Api.showModal(content, {
-                            width: 350,
-                            height: 200,
-                            caption: title || 'Сообщение',
-                            modal: true,
-                            onclose: callback
-                        });
+                    window.D3Api.close = function(result) {
+                        window.close(result);
                     };
                     
-                    window.D3Api.showConfirm = function(message, title, confirmCallback, cancelCallback) {
-                        let content = `
-                            <!DOCTYPE html>
-                            <html>
-                            <head>
-                                <style>
-                                    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; text-align: center; }
-                                    .message { margin: 30px 0; font-size: 16px; }
-                                    .buttons { display: flex; justify-content: center; gap: 10px; }
-                                    button { padding: 8px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-                                    .confirm { background: #4CAF50; color: white; }
-                                    .confirm:hover { background: #45a049; }
-                                    .cancel { background: #f44336; color: white; }
-                                    .cancel:hover { background: #da190b; }
-                                </style>
-                            </head>
-                            <body>
-                                <div class="message">${message}</div>
-                                <div class="buttons">
-                                    <button class="confirm" onclick="window.parent.postMessage({command: 'confirm', result: true}, '*')">OK</button>
-                                    <button class="cancel" onclick="window.parent.postMessage({command: 'confirm', result: false}, '*')">Отмена</button>
-                                </div>
-                                <script>
-                                    window.parent.postMessage({command: 'ready'}, '*');
-                                </script>
-                            </body>
-                            </html>
-                        `;
-                        
-                        let win = window.D3Api.showModal(content, {
-                            width: 350,
-                            height: 220,
-                            caption: title || 'Подтверждение',
-                            modal: true
-                        });
-                        
-                        win.onMessage('confirm', (data) => {
-                            win.close();
-                            if (data.result && confirmCallback) {
-                                confirmCallback();
-                            } else if (!data.result && cancelCallback) {
-                                cancelCallback();
-                            }
-                        });
-                        
-                        return win;
-                    };
+                    console.log('cmpWindow: Component initialized');
+                    
+                    // Восстанавливаем колбэки при загрузке страницы
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', restorePageCallbacks);
+                    } else {
+                        restorePageCallbacks();
+                    }
                 }
                 
                 waitForD3Api(initialize);
