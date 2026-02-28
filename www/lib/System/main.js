@@ -1116,6 +1116,7 @@ window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
          * Поддерживает: input, select, textarea, checkbox, radio
          */
         D3Api.setValue = function(name, value) {
+            debugger
             var ctrlObj = document.querySelector('[name="' + name + '"]');
             if (!ctrlObj) return false;
 

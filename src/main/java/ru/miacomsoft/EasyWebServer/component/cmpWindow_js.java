@@ -183,7 +183,7 @@ public class cmpWindow_js {
                                     if (callbacks.onclose) {
                                         restoredData.onclose = new Function('return ' + callbacks.onclose)();
                                     }
-                                    debugger
+                                    
                                     if (callbacks.oncreate) {
                                         restoredData.oncreate = new Function('return ' + callbacks.oncreate)();
                                     }
@@ -219,7 +219,6 @@ public class cmpWindow_js {
                                     
                                     _activeWindow = pageObject;
 
-                                    debugger                                    
                                     // Вызываем oncreate если есть
                                     if (restoredData.oncreate) {
                                         console.log('Calling oncreate');
@@ -432,6 +431,35 @@ public class cmpWindow_js {
                                 self.close(result);
                             };
                             
+                            // Добавляем методы для работы со скриптами в окне
+                            this.D3Api.loadScript = function(name, src, async, defer) {
+                                if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
+                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.load(name, src, async, defer);
+                                }
+                                return Promise.reject('Iframe not ready');
+                            };
+                            
+                            this.D3Api.executeScript = function(name, content) {
+                                if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
+                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.execute(name, content);
+                                }
+                                return false;
+                            };
+                            
+                            this.D3Api.getScriptStatus = function(name) {
+                                if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
+                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.getStatus(name);
+                                }
+                                return { exists: false, error: 'Iframe not ready' };
+                            };
+                            
+                            this.D3Api.waitForScript = function(name) {
+                                if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
+                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.waitFor(name);
+                                }
+                                return Promise.reject('Iframe not ready');
+                            };
+                            
                             // Сохраняем ссылку на окно
                             this.windowId = 'win_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                             window.__d3Windows[this.windowId] = this;
@@ -533,6 +561,14 @@ public class cmpWindow_js {
                                                 break;
                                             case 'setCaption':
                                                 this.setCaption(event.data.caption);
+                                                break;
+                                            case 'scriptLoaded':
+                                                console.log('Script loaded in iframe:', event.data.name);
+                                                this.dispatchEvent('scriptLoaded', event.data);
+                                                break;
+                                            case 'scriptError':
+                                                console.error('Script error in iframe:', event.data.name, event.data.error);
+                                                this.dispatchEvent('scriptError', event.data);
                                                 break;
                                             default:
                                                 if (this.messageHandlers[event.data.command]) {
@@ -854,7 +890,6 @@ public class cmpWindow_js {
                             requestAnimationFrame(function() {
                                 self.element.classList.remove('animate');
                                 if (self.options.onshow && typeof self.options.onshow === 'function') {
-                                    //self.options.onshow.call(self.D3Api, self.D3Api);
                                     self.options.onshow.call(self.D3Api, self);
                                 }
                                 self.dispatchEvent('show');
@@ -951,7 +986,21 @@ public class cmpWindow_js {
                                 close: function(result) {
                                     window.close(result);
                                 },
-                                // Добавляем заглушки для остальных методов
+                                // Добавляем методы для работы со скриптами
+                                loadScript: function(name, src, async, defer) {
+                                    console.warn('loadScript not available in page navigation mode');
+                                    return Promise.reject('Not available in page mode');
+                                },
+                                executeScript: function(name, content) {
+                                    console.warn('executeScript not available in page navigation mode');
+                                    return false;
+                                },
+                                getScriptStatus: function(name) {
+                                    return { exists: false, error: 'Not available in page mode' };
+                                },
+                                waitForScript: function(name) {
+                                    return Promise.reject('Not available in page mode');
+                                },
                                 setVar: function() {},
                                 getVar: function() {},
                                 setValue: function() {},
@@ -1011,7 +1060,8 @@ public class cmpWindow_js {
                         
                                     const scripts = [
                                         `/{component}/main_js`,
-                                        `/{component}/md5`
+                                        `/{component}/md5`,
+                                        `/{component}/cmpScript_js`  // Добавляем загрузку cmpScript
                                     ];
                         
                                     // Загружаем скрипты последовательно (синхронно)
@@ -1045,7 +1095,6 @@ public class cmpWindow_js {
                                     });
                         
                                     win.show();
-                                    debugger;
                         
                                     if (data.oncreate && typeof data.oncreate === 'function') {
                                         data.oncreate.call(win.D3Api, win);
@@ -1082,6 +1131,10 @@ public class cmpWindow_js {
                                 }
                             } else if (msg.command === 'setCaption') {
                                 win.setCaption(msg.caption);
+                            } else if (msg.command === 'scriptLoaded') {
+                                console.log('Script loaded in iframe:', msg.name);
+                            } else if (msg.command === 'scriptError') {
+                                console.error('Script error in iframe:', msg.name, msg.error);
                             }
                         });
                         

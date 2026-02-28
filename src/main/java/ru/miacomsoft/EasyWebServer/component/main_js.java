@@ -1067,6 +1067,233 @@ D3Api = new function () {
             })
             .catch(error => console.error('Error:', error));
     };
+
+    // ============== НОВЫЙ ФУНКЦИОНАЛ ДЛЯ РАБОТЫ СО СКРИПТАМИ ==============
+
+    /**
+     * Хранилище для загруженных скриптов
+     * @private
+     */
+    var _loadedScripts = {};
+    
+    /**
+     * Промисы для загружаемых скриптов
+     * @private
+     */
+    var _scriptPromises = {};
+
+    /**
+     * Загрузка внешнего скрипта
+     * @param {string} name - Имя скрипта (для идентификации)
+     * @param {string} src - URL скрипта
+     * @param {boolean} async - Асинхронная загрузка
+     * @param {boolean} defer - Отложенная загрузка
+     * @returns {Promise} Промис загрузки скрипта
+     */
+    this.loadScript = function(name, src, async, defer) {
+        return new Promise(function(resolve, reject) {
+            if (_loadedScripts[src]) {
+                console.log('Script already loaded:', src);
+                resolve();
+                return;
+            }
+
+            var script = document.createElement('script');
+            script.src = src;
+            script.type = 'text/javascript';
+            
+            if (async) script.async = true;
+            if (defer) script.defer = true;
+
+            script.onload = function() {
+                _loadedScripts[src] = true;
+                console.log('Script loaded:', src);
+                
+                // Генерируем событие
+                var event = new CustomEvent('scriptLoaded', {
+                    detail: { name: name, src: src }
+                });
+                document.dispatchEvent(event);
+                
+                resolve();
+            };
+
+            script.onerror = function(error) {
+                console.error('Script load error:', src, error);
+                
+                var event = new CustomEvent('scriptError', {
+                    detail: { name: name, src: src, error: error }
+                });
+                document.dispatchEvent(event);
+                
+                reject(error);
+            };
+
+            document.head.appendChild(script);
+        });
+    };
+
+    /**
+     * Выполнение встроенного скрипта
+     * @param {string} name - Имя скрипта
+     * @param {string} content - Содержимое скрипта
+     * @returns {boolean} Успешность выполнения
+     */
+    this.executeScript = function(name, content) {
+        try {
+            if (!content) return false;
+            
+            // Используем Function для создания функции в глобальной области видимости
+            var scriptFunction = new Function(content);
+            scriptFunction.call(window);
+            
+            console.log('Script executed:', name);
+            
+            var event = new CustomEvent('scriptExecuted', {
+                detail: { name: name }
+            });
+            document.dispatchEvent(event);
+            
+            return true;
+        } catch (e) {
+            console.error('Script execution error:', name, e);
+            
+            var event = new CustomEvent('scriptError', {
+                detail: { name: name, error: e.message }
+            });
+            document.dispatchEvent(event);
+            
+            return false;
+        }
+    };
+
+    /**
+     * Получение статуса скрипта
+     * @param {string} name - Имя скрипта
+     * @returns {Object} Статус скрипта
+     */
+    this.getScriptStatus = function(name) {
+        var scriptElement = document.querySelector('[cmptype="Script"][name="' + name + '"]');
+        if (!scriptElement) {
+            return { exists: false, loaded: false, error: 'Script not found' };
+        }
+        
+        var src = scriptElement.getAttribute('src');
+        return {
+            exists: true,
+            loaded: src ? !!_loadedScripts[src] : true,
+            error: scriptElement.D3Store ? scriptElement.D3Store.error : null,
+            src: src,
+            type: scriptElement.getAttribute('type') || 'text/javascript'
+        };
+    };
+
+    /**
+     * Ожидание загрузки скрипта
+     * @param {string} name - Имя скрипта
+     * @returns {Promise} Промис загрузки
+     */
+    this.waitForScript = function(name) {
+        var scriptElement = document.querySelector('[cmptype="Script"][name="' + name + '"]');
+        if (!scriptElement) {
+            return Promise.reject('Script not found: ' + name);
+        }
+        
+        var src = scriptElement.getAttribute('src');
+        if (!src) {
+            // Встроенный скрипт
+            return Promise.resolve();
+        }
+        
+        if (_loadedScripts[src]) {
+            return Promise.resolve();
+        }
+        
+        if (_scriptPromises[src]) {
+            return _scriptPromises[src];
+        }
+        
+        _scriptPromises[src] = new Promise(function(resolve, reject) {
+            var checkInterval = setInterval(function() {
+                if (_loadedScripts[src]) {
+                    clearInterval(checkInterval);
+                    delete _scriptPromises[src];
+                    resolve();
+                }
+            }, 100);
+            
+            // Таймаут через 30 секунд
+            setTimeout(function() {
+                clearInterval(checkInterval);
+                delete _scriptPromises[src];
+                reject('Timeout waiting for script: ' + name);
+            }, 30000);
+        });
+        
+        return _scriptPromises[src];
+    };
+
+    /**
+     * Создание нового скрипта динамически
+     * @param {string} name - Имя скрипта
+     * @param {string} content - Содержимое скрипта
+     * @param {Object} options - Опции (src, type, async, defer)
+     * @returns {Promise} Промис выполнения
+     */
+    this.createScript = function(name, content, options) {
+        options = options || {};
+        
+        // Удаляем старый скрипт если есть
+        var oldScript = document.querySelector('[cmptype="Script"][name="' + name + '"]');
+        if (oldScript) {
+            oldScript.remove();
+        }
+        
+        // Создаем новый элемент
+        var script = document.createElement('script');
+        script.setAttribute('cmptype', 'Script');
+        script.setAttribute('name', name);
+        
+        if (options.src) {
+            script.setAttribute('src', options.src);
+        }
+        
+        if (options.type) {
+            script.setAttribute('type', options.type);
+        }
+        
+        if (options.async) {
+            script.setAttribute('async', 'async');
+        }
+        
+        if (options.defer) {
+            script.setAttribute('defer', 'defer');
+        }
+        
+        if (options.charset) {
+            script.setAttribute('charset', options.charset);
+        }
+        
+        script.textContent = content || '';
+        
+        // Инициализируем D3Store
+        script.D3Store = {
+            loaded: false,
+            error: null
+        };
+        
+        document.head.appendChild(script);
+        
+        // Загружаем или выполняем
+        if (options.src) {
+            return this.loadScript(name, options.src, options.async, options.defer);
+        } else if (content) {
+            var result = this.executeScript(name, content);
+            return result ? Promise.resolve() : Promise.reject('Script execution failed');
+        }
+        
+        return Promise.resolve();
+    };
 }
 
 // Инициализация
@@ -1137,8 +1364,15 @@ window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
          */
         D3Api.setValue = function(name, value) {
             var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj)  {
+                const bodyTmp = document.body;
+                const iframe = bodyTmp.querySelector('iframe');
+                const documentTmp = iframe.contentDocument || iframe.contentWindow.document;
+                if (documentTmp) {
+                    ctrlObj = documentTmp.body.querySelector('[name="' + name + '"]');
+                }
+            }
             if (!ctrlObj) return false;
-
             var oldValue = this.getValue(name);
             var tagName = ctrlObj.tagName.toLowerCase();
             var type = ctrlObj.type ? ctrlObj.type.toLowerCase() : '';
@@ -1183,8 +1417,16 @@ window.d3 = new D3Api.init(document.getElementsByTagName("body")[0]);
          */
         D3Api.getValue = function(name, defValue) {
             var ctrlObj = document.querySelector('[name="' + name + '"]');
+            if (!ctrlObj)  {
+                const bodyTmp = document.body;
+                const iframe = bodyTmp.querySelector('iframe');
+                const documentTmp = iframe.contentDocument || iframe.contentWindow.document;
+                if (documentTmp) {
+                    ctrlObj = documentTmp.body.querySelector('[name="' + name + '"]');
+                }
+            }
             if (!ctrlObj) return defValue;
-
+            debugger
             var tagName = ctrlObj.tagName.toLowerCase();
             var type = ctrlObj.type ? ctrlObj.type.toLowerCase() : '';
 

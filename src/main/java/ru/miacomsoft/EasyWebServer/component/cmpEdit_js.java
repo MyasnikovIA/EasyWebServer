@@ -447,6 +447,7 @@ public class cmpEdit_js {
                                 setPlaceholder: setPlaceholder,
                                 
                                 getValue: function(dom) {
+                                    debugger
                                     var input = getInput(dom);
                                     var res = input.value;
                                     
@@ -463,6 +464,7 @@ public class cmpEdit_js {
                                 },
                                 
                                 setValue: function(dom, value) {
+                                    debugger
                                     if (value === undefined) value = null;
                                     
                                     dom.D3Store = dom.D3Store || {};
@@ -473,6 +475,7 @@ public class cmpEdit_js {
                                 },
                                 
                                 getCaption: function(dom) {
+                                    debugger
                                     var input = getInput(dom);
                                     if (!input) return '';
                                     
@@ -483,6 +486,7 @@ public class cmpEdit_js {
                                 },
                                 
                                 setCaption: function(dom, value) {
+                                    debugger
                                     var input = getInput(dom);
                                     if (!input) return;
                                     
