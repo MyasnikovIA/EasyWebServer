@@ -304,7 +304,7 @@ public class cmpWindow_js {
                                 overlay = '<div class="win_overlow"></div>';
                             }
                 
-                            // Создаем iframe без src, он будет заполнен позже через fetch
+                            // Создаем iframe без src, он будет заполнен позже через srcdoc
                             let windowHtml = overlay + `
                                 <div class="window ${theme}" style="width: ${width}px; height: ${height}px; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; position: fixed; z-index: 9999; background: white; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
                                     <div class="window-header" data-role="title-row" style="color: rgb(50,50,50);display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f0f0f0; border-bottom: 1px solid #ccc; cursor: move; border-radius: 8px 8px 0 0;">
@@ -877,19 +877,28 @@ public class cmpWindow_js {
                             }
                 
                             /**
-                             * Загрузка содержимого через fetch и вставка в iframe
+                             * Загрузка содержимого через fetch и вставка в iframe через srcdoc
                              */
                             loadContent(url) {
                                 const self = this;
                                 console.log('Loading content via fetch:', url);
                 
                                 // Показываем индикатор загрузки
-                                if (this.iframe && this.iframe.contentDocument) {
-                                    const loadingDiv = this.iframe.contentDocument.createElement('div');
-                                    loadingDiv.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;';
-                                    loadingDiv.innerHTML = '<div style="border:4px solid #f3f3f3; border-top:4px solid #3498db; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto;"></div><p style="margin-top:10px;">Загрузка...</p>';
-                                    this.iframe.contentDocument.body.innerHTML = '';
-                                    this.iframe.contentDocument.body.appendChild(loadingDiv);
+                                if (this.iframe) {
+                                    // Очищаем iframe и показываем загрузку через srcdoc
+                                    this.iframe.srcdoc = `
+                                        <!DOCTYPE html>
+                                        <html>
+                                        <head><meta charset="UTF-8"></head>
+                                        <body>
+                                            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;">
+                                                <div style="border:4px solid #f3f3f3; border-top:4px solid #3498db; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto;"></div>
+                                                <p style="margin-top:10px;">Загрузка...</p>
+                                            </div>
+                                            <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+                                        </body>
+                                        </html>
+                                    `;
                                 }
                 
                                 fetch(url)
@@ -905,13 +914,20 @@ public class cmpWindow_js {
                                     })
                                     .catch(error => {
                                         console.error('Failed to load content:', error);
-                                        if (self.iframe && self.iframe.contentDocument) {
-                                            self.iframe.contentDocument.body.innerHTML = 
-                                                '<div style="color: red; padding: 20px; text-align: center;">' +
-                                                '<h3>Ошибка загрузки</h3>' +
-                                                '<p>Не удалось загрузить: ' + url + '</p>' +
-                                                '<p>' + error.message + '</p>' +
-                                                '</div>';
+                                        if (self.iframe) {
+                                            self.iframe.srcdoc = `
+                                                <!DOCTYPE html>
+                                                <html>
+                                                <head><meta charset="UTF-8"></head>
+                                                <body>
+                                                    <div style="color: red; padding: 20px; text-align: center;">
+                                                        <h3>Ошибка загрузки</h3>
+                                                        <p>Не удалось загрузить: ${url}</p>
+                                                        <p>${error.message}</p>
+                                                    </div>
+                                                </body>
+                                                </html>
+                                            `;
                                         }
                                         self.show();
                                     });
@@ -923,173 +939,143 @@ public class cmpWindow_js {
                             processContent(html) {
                                 const self = this;
                                 const iframe = this.iframe;
-                                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                
-                                // Очищаем iframe
-                                iframeDoc.open();
-                                iframeDoc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body></body></html>');
-                                iframeDoc.close();
-                
-                                // Парсим HTML
-                                const parser = new DOMParser();
-                                const doc = parser.parseFromString(html, 'text/html');
-                
-                                // ============== КОПИРОВАНИЕ CSS СТИЛЕЙ ==============
-                                // Копируем все стили из head загруженного документа
-                                const head = doc.querySelector('head');
-                                if (head) {
-                                    // Копируем все элементы head (стили, мета-теги, ссылки)
-                                    Array.from(head.children).forEach(el => {
-                                        try {
-                                            // Для link и style элементов
-                                            if (el.tagName === 'LINK' || el.tagName === 'STYLE') {
-                                                const clonedEl = el.cloneNode(true);
-                                                iframeDoc.head.appendChild(clonedEl);
-                                                console.log('Copied style element:', el.tagName, el.getAttribute('href') || 'inline');
-                                            } else if (el.tagName !== 'TITLE') {
-                                                // Для других элементов head
-                                                iframeDoc.head.appendChild(el.cloneNode(true));
-                                            }
-                                        } catch (e) {
-                                            console.warn('Failed to copy head element:', e);
-                                        }
-                                    });
-                                }
-                
-                                // Извлекаем заголовок
-                                const title = doc.querySelector('title');
-                                if (title) {
-                                    iframeDoc.title = title.textContent;
-                                }
-                
-                                // Сохраняем body для последующей вставки
-                                const bodyContent = doc.querySelector('body');
-                                if (bodyContent) {
-                                    // Сохраняем HTML строку для последующей вставки
-                                    this.bodyHTML = bodyContent.innerHTML;
-                                }
                 
                                 // ============== ИНИЦИАЛИЗАЦИЯ ОБЪЕКТА FORM ==============
-                                // Создаем объект Form в контексте iframe
-                                if (typeof iframe.contentWindow.Form === 'undefined') {
-                                    iframe.contentWindow.Form = this.Form;
-                                    console.log('Form object linked to iframe');
-                                }
-                
-                                // Добавляем базовые методы для Form, если их нет
-                                if (!this.Form.getVar) {
+                                // Создаем объект Form для этого окна
+                                if (Object.keys(this.Form).length === 0) {
+                                    // Добавляем базовые методы для Form
                                     this.Form.getVar = function(name, defValue) {
-                                        return defValue;
+                                        return self._vars[name] !== undefined ? self._vars[name] : defValue;
                                     };
-                                    this.Form.setVar = function(name, value) {};
+                                    this.Form.setVar = function(name, value) {
+                                        self._vars[name] = value;
+                                    };
                                     this.Form.getValue = function(name, defValue) {
+                                        if (iframe.contentWindow && iframe.contentWindow.D3Api) {
+                                            return iframe.contentWindow.D3Api.getValue ? iframe.contentWindow.D3Api.getValue(name, defValue) : defValue;
+                                        }
                                         return defValue;
                                     };
-                                    this.Form.setValue = function(name, value) {};
+                                    this.Form.setValue = function(name, value) {
+                                        if (iframe.contentWindow && iframe.contentWindow.D3Api) {
+                                            if (iframe.contentWindow.D3Api.setValue) iframe.contentWindow.D3Api.setValue(name, value);
+                                        }
+                                    };
                                     this.Form.getCaption = function(name) {
+                                        if (iframe.contentWindow && iframe.contentWindow.D3Api) {
+                                            return iframe.contentWindow.D3Api.getCaption ? iframe.contentWindow.D3Api.getCaption(name) : '';
+                                        }
                                         return '';
                                     };
-                                    this.Form.setCaption = function(name, value) {};
+                                    this.Form.setCaption = function(name, value) {
+                                        if (iframe.contentWindow && iframe.contentWindow.D3Api) {
+                                            if (iframe.contentWindow.D3Api.setCaption) iframe.contentWindow.D3Api.setCaption(name, value);
+                                        }
+                                    };
                                     this.Form.close = function(result) {
                                         if (self.D3Api && self.D3Api.close) {
                                             self.D3Api.close(result);
                                         }
                                     };
+                                    this.Form.getDOM = function() {
+                                        return iframe.contentDocument ? iframe.contentDocument.querySelector('[cmptype="Form"]') : null;
+                                    };
                                 }
                 
-                                // ============== КОМПИЛЯЦИЯ ФУНКЦИЙ ИЗ СКРИПТОВ ==============
+                                // Парсим HTML для извлечения скриптов с cmptype="Script"
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(html, 'text/html');
+                                
                                 // Извлекаем все скрипты с атрибутом cmptype="Script"
                                 const scripts = doc.querySelectorAll('[cmptype="Script"]');
                                 console.log('Found ' + scripts.length + ' script components to compile');
-                
+                                
+                                // Сохраняем функции, которые будут добавлены в Form
+                                const formFunctions = {};
+                                
                                 scripts.forEach(script => {
                                     if (script.textContent && script.textContent.trim()) {
                                         try {
                                             console.log('Compiling script content');
                                             
-                                            // Создаем функцию с параметром Form и выполняем её
-                                            // Это позволит скрипту расширять объект Form
+                                            // Создаем функцию, которая будет выполнена после загрузки iframe
                                             const scriptFunction = new Function('Form', script.textContent);
-                                            scriptFunction.call(iframe.contentWindow, this.Form);
+                                            
+                                            // Временно сохраняем функцию для выполнения после загрузки
+                                            if (!this._pendingScripts) this._pendingScripts = [];
+                                            this._pendingScripts.push(scriptFunction);
                 
-                                            console.log('Script compiled successfully');
                                         } catch (e) {
-                                            console.error('Error compiling script:', e);
+                                            console.error('Error preparing script:', e);
                                         }
                                     }
                                 });
                 
-                                // Логируем все методы, которые теперь есть в Form
-                                console.log('Form methods after compilation:', Object.keys(this.Form));
+                                // Удаляем все скрипты с cmptype="Script" из HTML, чтобы они не выполнялись дважды
+                                const tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = html;
+                                const scriptElements = tempDiv.querySelectorAll('[cmptype="Script"]');
+                                scriptElements.forEach(el => el.remove());
+                                const cleanedHtml = tempDiv.innerHTML;
                 
-                                // ============== ВСТАВКА ТЕЛА ДОКУМЕНТА ==============
-                                // Вставляем body после компиляции скриптов
-                                if (this.bodyHTML) {
-                                    iframeDoc.body.innerHTML = this.bodyHTML;
-                                    delete this.bodyHTML;
-                                }
+                                // Вставляем очищенный HTML в iframe через srcdoc
+                                // Добавляем базовый скрипт для связывания Form
+                                const finalHtml = `
+                                    <!DOCTYPE html>
+                                    <html>
+                                    <head>
+                                        <meta charset="UTF-8">
+                                        <base href="${window.location.origin}">
+                                    </head>
+                                    <body>
+                                        ${cleanedHtml}
+                                        <script>
+                                            // Связываем объект Form с родительским окном
+                                            window.Form = parent.${self.windowId}.Form;
+                                            
+                                            // Выполняем сохраненные скрипты после загрузки страницы
+                                            window.addEventListener('load', function() {
+                                                if (parent.${self.windowId} && parent.${self.windowId}._pendingScripts) {
+                                                    parent.${self.windowId}._pendingScripts.forEach(function(scriptFn) {
+                                                        try {
+                                                            scriptFn.call(window, window.Form);
+                                                        } catch (e) {
+                                                            console.error('Error executing script:', e);
+                                                        }
+                                                    });
+                                                }
+                                                
+                                                // Вызываем onCreate если он определен
+                                                if (typeof window.Form.onCreate === 'function') {
+                                                    try {
+                                                        window.Form.onCreate.call(window, parent.${self.windowId});
+                                                    } catch (e) {
+                                                        console.error('Error in Form.onCreate:', e);
+                                                    }
+                                                }
+                                            });
+                                        <\\/script>
+                                    </body>
+                                    </html>
+                                `;
                 
-                                // ============== ЗАГРУЗКА БИБЛИОТЕК ==============
-                                this.loadLibraries(iframe, doc, this.options.vars || {});
+                                // Устанавливаем srcdoc для iframe
+                                this.iframe.srcdoc = finalHtml;
+                
+                                // Ждем загрузки iframe и затем загружаем библиотеки
+                                this.iframe.onload = function() {
+                                    console.log('Iframe loaded, loading libraries...');
+                                    self.loadLibraries(self.iframe, self.options.vars || {});
+                                };
                             }
                 
                             /**
                              * Загрузка библиотек
                              */
-                            loadLibraries(iframe, doc, vars) {
+                            loadLibraries(iframe, vars) {
                                 const self = this;
                                 const iframeWin = iframe.contentWindow;
                                 const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                
-                                // Функция для инъекции базового D3Api в iframe
-                                function injectBaseD3Api() {
-                                    return new Promise((resolve, reject) => {
-                                        try {
-                                            const baseScript = iframeDoc.createElement('script');
-                                            baseScript.type = 'text/javascript';
-                                            baseScript.textContent = `
-                                                // Копируем базовые определения из родительского окна
-                                                if (typeof window.D3Api === 'undefined') {
-                                                    window.D3Api = {};
-                                                }
-                                                
-                                                // Копируем ControlBaseProperties если он существует
-                                                if (window.parent.D3Api && window.parent.D3Api.ControlBaseProperties) {
-                                                    window.D3Api.ControlBaseProperties = window.parent.D3Api.ControlBaseProperties;
-                                                }
-                                                
-                                                // Копируем BaseCtrl если он существует
-                                                if (window.parent.D3Api && window.parent.D3Api.BaseCtrl) {
-                                                    window.D3Api.BaseCtrl = window.parent.D3Api.BaseCtrl;
-                                                }
-                                                
-                                                // Копируем базовые методы
-                                                var methodsToCopy = [
-                                                    'stopEvent', 'getEvent', 'addEvent', 'removeEvent',
-                                                    'getControl', 'setValue', 'getValue', 'setVar', 'getVar',
-                                                    'setCaption', 'getCaption', 'setDisabled', 'getBoolean',
-                                                    'hasProperty', 'getProperty', 'setProperty',
-                                                    'getChildTag', 'hideDom', 'showDom', 'createDom',
-                                                    'stringTrim', 'parseDate', 'hours2time', 'debug_msg'
-                                                ];
-                                                
-                                                methodsToCopy.forEach(function(method) {
-                                                    if (window.parent.D3Api && window.parent.D3Api[method]) {
-                                                        window.D3Api[method] = window.parent.D3Api[method];
-                                                    }
-                                                });
-                                                
-                                                console.log('Base D3Api injected into iframe');
-                                            `;
-                                            
-                                            iframeDoc.head.appendChild(baseScript);
-                                            resolve();
-                                        } catch (e) {
-                                            console.error('Failed to inject base D3Api:', e);
-                                            reject(e);
-                                        }
-                                    });
-                                }
                 
                                 // Функция для загрузки скрипта
                                 function loadScriptSync(src) {
@@ -1116,8 +1102,6 @@ public class cmpWindow_js {
                                 // Функция для загрузки всех библиотек
                                 async function loadLibrariesAsync() {
                                     try {
-                                        await injectBaseD3Api();
-                                        
                                         const componentPath = window.component || '';
                 
                                         const scripts = [
@@ -1188,15 +1172,6 @@ public class cmpWindow_js {
                 
                                         // Показываем окно
                                         self.show();
-                
-                                        // Вызываем onCreate если он определен
-                                        if (typeof self.Form.onCreate === 'function') {
-                                            try {
-                                                self.Form.onCreate.call(iframeWin.D3Api || iframeWin, self);
-                                            } catch (e) {
-                                                console.error('Error in Form.onCreate:', e);
-                                            }
-                                        }
                 
                                         // Вызываем oncreate из данных если есть
                                         if (self.options.oncreate && typeof self.options.oncreate === 'function') {
@@ -1351,6 +1326,9 @@ public class cmpWindow_js {
                                 url: url,
                                 onshow: data.onshow
                             });
+                
+                            // Сохраняем ссылку на окно в глобальном объекте для доступа из iframe
+                            window[win.windowId] = win;
                 
                             if (!win.element || !win.iframe) {
                                 console.error('Failed to create window properly');
