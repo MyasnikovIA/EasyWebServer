@@ -1,118 +1,162 @@
-/**
- * Компонент для ввода текстовой информации
- * Поддерживает различные типы input элементов
- *
- * Примеры использования:
- * <cmpEdit name="login" type="text" required="true"/>
- * <cmpEdit name="phone" placeholder="Телефон"/>
- * <cmpEdit name="email" type="email" required="true"/>
- * <cmpEdit name="birthday" type="date"/>
- * <cmpEdit name="pwd" type="password"/>
- * <cmpEdit name="message" type="textarea"/>
- *
- * <!-- Поле с подписью -->
- * <cmpEdit name="username" label="Имя пользователя" value="John"/>
- */
 package ru.miacomsoft.EasyWebServer.component;
 
-import org.jsoup.nodes.Attribute;
 import org.jsoup.nodes.Attributes;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-/**
- * Компонент для ввода текстовой информации
- */
 public class cmpEdit extends Base {
 
-    // Конструктор с тремя параметрами
     public cmpEdit(Document doc, Element element, String tag) {
         super(doc, element, tag);
+
         Attributes attrs = element.attributes();
-        Attributes attrsDst = this.attributes();
 
-        // Устанавливаем базовые атрибуты
-        attrsDst.add("schema", "Edit");
-        attrsDst.add("cmptype", "Edit");
+        // Получаем атрибуты
+        String name = attrs.hasKey("name") ? attrs.get("name") : genUUID();
+        String value = RemoveArrKeyRtrn(attrs, "value", "");
+        String placeholder = RemoveArrKeyRtrn(attrs, "placeholder", "");
+        String maxlength = RemoveArrKeyRtrn(attrs, "maxlength", "");
+        String type = RemoveArrKeyRtrn(attrs, "type", "text");
+        String format = RemoveArrKeyRtrn(attrs, "format", "");
+        String mask_type = RemoveArrKeyRtrn(attrs, "mask_type", "");
+        String disabled = RemoveArrKeyRtrn(attrs, "disabled", null);
+        String readonly = RemoveArrKeyRtrn(attrs, "readonly", null);
+        String trim = RemoveArrKeyRtrn(attrs, "trim", "false");
+        String onchange = RemoveArrKeyRtrn(attrs, "onchange", "");
+        String onformat = RemoveArrKeyRtrn(attrs, "onformat", "");
+        String style = RemoveArrKeyRtrn(attrs, "style", "");
+        String cssClass = RemoveArrKeyRtrn(attrs, "class", "ctrl_edit editControl");
+        String theme = RemoveArrKeyRtrn(attrs, "theme", "default");
+        String width = RemoveArrKeyRtrn(attrs, "width", "auto");
 
-        String name = attrs.get("name");
-        this.attr("name", name);
+        // Создаем контейнер для поля ввода
+        Element editDiv = new Element("div");
+        editDiv.attr("name", name);
+        editDiv.attr("cmptype", "Edit");
+        editDiv.attr("data-theme", theme);
+        editDiv.attr("data-trim", trim);
+        editDiv.attr("class", cssClass);
 
-        // Определяем тип элемента (input или textarea)
-        String type = attrs.hasKey("type") ? attrs.get("type") : "text";
-        String tagName = "input";
-
-        if ("textarea".equals(type)) {
-            tagName = "textarea";
-            attrs.remove("type");
-        }
-
-        // Создаем соответствующий элемент
-        Element inputElement = new Element(tagName);
-
-        // Копируем стандартные атрибуты
-        copyInputAttributes(attrs, inputElement.attributes());
-
-        // Обработка подписи (label)
-        String label = RemoveArrKeyRtrn(attrs, "label", "");
-        if (!label.isEmpty()) {
-            createLabel(doc, name, label, inputElement);
-        } else {
-            // Если нет подписи, добавляем input напрямую в body
-            Elements body = doc.getElementsByTag("body");
-            body.append(inputElement.toString());
-        }
-
-        // Автоматическое подключение JavaScript библиотеки для cmpEdit
-        Elements head = doc.getElementsByTag("head");
-
-        // Проверяем, не подключена ли уже библиотека
-        Elements existingScripts = head.select("script[src*='cmpEdit_js']");
-        if (existingScripts.isEmpty()) {
-            // Добавляем ссылку на JS библиотеку
-            String jsPath = "{component}/cmpEdit_js";
-            head.append("<script cmp=\"edit-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
-            System.out.println("cmpEdit: JavaScript library auto-included for edit: " + name);
-        }
-    }
-
-    /**
-     * Копирование стандартных атрибутов input/textarea элемента
-     */
-    private void copyInputAttributes(Attributes src, Attributes dst) {
-        String[] inputAttrs = {
-                "type", "value", "placeholder", "size", "maxlength",
-                "minlength", "readonly", "disabled", "required",
-                "autocomplete", "autofocus", "pattern", "title",
-                "rows", "cols", "wrap", "name", "id", "class", "style"
-        };
-
-        for (String attr : inputAttrs) {
-            String val = RemoveArrKeyRtrn(src, attr, null);
-            if (val != null) {
-                dst.add(attr, val);
+        // Управляем шириной
+        if (!width.isEmpty()) {
+            if (!style.isEmpty()) {
+                style += "; ";
+            }
+            if (width.equals("auto")) {
+                style += "width: auto; min-width: 100px;";
+            } else if (width.equals("full")) {
+                style += "width: 100%;";
+            } else if (width.matches("\\d+%")) {
+                style += "width: " + width + ";";
+            } else if (width.matches("\\d+px")) {
+                style += "width: " + width + ";";
             }
         }
 
-        // По умолчанию добавляем атрибут name
-        if (!dst.hasKey("name") && src.hasKey("name")) {
-            dst.add("name", src.get("name"));
+        if (!style.isEmpty()) {
+            editDiv.attr("style", style);
         }
-    }
 
-    /**
-     * Создание подписи для поля ввода
-     */
-    private void createLabel(Document doc, String name, String labelText, Element inputElement) {
+        // Добавляем атрибуты для форматирования
+        if (!format.isEmpty()) {
+            editDiv.attr("data-format", format);
+        }
+
+        if (!mask_type.isEmpty()) {
+            editDiv.attr("data-mask-type", mask_type);
+        }
+
+        // Создаем input элемент
+        Element input = new Element("input");
+        input.attr("type", type);
+        input.attr("value", value);
+
+        if (!name.isEmpty()) {
+            input.attr("name", name + "_input");
+        }
+
+        if (!placeholder.isEmpty()) {
+            input.attr("placeholder", placeholder);
+            editDiv.attr("data-placeholder", placeholder);
+        }
+
+        if (!maxlength.isEmpty()) {
+            input.attr("maxlength", maxlength);
+        }
+
+        if (disabled != null) {
+            input.attr("disabled", "disabled");
+            editDiv.attr("disabled", disabled);
+        }
+
+        if (readonly != null) {
+            input.attr("readonly", "readonly");
+        }
+
+        // Добавляем обработчики событий
+        StringBuilder allEvents = new StringBuilder();
+
+        if (!onchange.isEmpty()) {
+            allEvents.append(onchange).append(";");
+        }
+
+        // Добавляем обработчик format если есть
+        if (!format.isEmpty() && onformat.isEmpty()) {
+            String formatScript = "D3Api.EditCtrl.format(this, " + format + ", arguments[0]);";
+            allEvents.append(formatScript);
+        } else if (!onformat.isEmpty()) {
+            allEvents.append(onformat);
+        }
+
+        if (allEvents.length() > 0) {
+            editDiv.attr("data-onchange", onchange);
+            if (!format.isEmpty() || !onformat.isEmpty()) {
+                editDiv.attr("data-onformat", allEvents.toString());
+            }
+        }
+
+        editDiv.appendChild(input);
+
+        // Если есть маска, создаем дополнительный элемент для маски
+        if (!mask_type.isEmpty()) {
+            Element maskDiv = new Element("div");
+            maskDiv.attr("cmptype", "Mask");
+            maskDiv.attr("name", name + "_mask_Ctrl");
+            maskDiv.attr("controls", name);
+            maskDiv.attr("style", "display: none;");
+
+            // Маска будет обрабатываться через JavaScript
+            maskDiv.attr("data-mask-type", mask_type);
+            if (!format.isEmpty()) {
+                maskDiv.attr("data-format", format);
+            }
+
+            editDiv.appendChild(maskDiv);
+        }
+
+        // Добавляем поле ввода в body документа
         Elements body = doc.getElementsByTag("body");
+        if (body != null && body.size() > 0) {
+            body.append(editDiv.toString());
+        }
 
-        StringBuilder label = new StringBuilder();
-        label.append("<div class=\"edit-container\" name=\"" + name + "_container\">");
-        label.append("  <label for=\"" + name + "\" block=\"caption\">" + labelText + "</label>");
-        label.append("  " + inputElement.toString());
-        label.append("</div>");
+        // Автоматическое подключение CSS и JavaScript
+        Elements head = doc.getElementsByTag("head");
+        if (head != null && head.size() > 0) {
+            // Подключаем CSS
+            Elements existingCss = head.select("link[href*='cmpEdit_css']");
+            if (existingCss.isEmpty()) {
+                String cssPath = "{component}/cmpEdit_css";
+                head.append("<link rel=\"stylesheet\" cmp=\"edit-css\" href=\"" + cssPath + "\" type=\"text/css\">");
+            }
 
-        body.append(label.toString());
+            // Подключаем JavaScript
+            Elements existingScripts = head.select("script[src*='cmpEdit_js']");
+            if (existingScripts.isEmpty()) {
+                String jsPath = "{component}/cmpEdit_js";
+                head.append("<script cmp=\"edit-lib\" src=\"" + jsPath + "\" type=\"text/javascript\"></script>");
+            }
+        }
     }
 }

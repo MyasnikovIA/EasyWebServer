@@ -4,248 +4,346 @@ import ru.miacomsoft.EasyWebServer.HttpExchange;
 
 /**
  * JavaScript библиотека для компонента cmpButton
- * Подключается автоматически при наличии cmpButton на странице
  * Расширяет функционал D3Api для работы с кнопками
+ * Подключается автоматически при наличии cmpButton на странице
  */
 public class cmpButton_js {
 
     public static byte[] onPage(HttpExchange query) {
         query.mimeType = "application/javascript";
 
-        StringBuffer sb = new StringBuffer();
-        sb.append("/**\n");
-        sb.append(" * JavaScript библиотека для компонента cmpButton\n");
-        sb.append(" * Расширяет функционал D3Api для работы с кнопками\n");
-        sb.append(" * Подключается автоматически при наличии cmpButton на странице\n");
-        sb.append(" */\n");
-        sb.append("(function() {\n");
-        sb.append("    // Предотвращаем повторную инициализацию\n");
-        sb.append("    if (window.cmpButtonInitialized) return;\n");
-        sb.append("    window.cmpButtonInitialized = true;\n");
-        sb.append("\n");
-        sb.append("    console.log('cmpButton: JavaScript library initialized');\n");
-        sb.append("\n");
-        sb.append("    // Хранилище для обработчиков событий\n");
-        sb.append("    var buttonClickHandlers = {};\n");
-        sb.append("\n");
-        sb.append("    /**\n");
-        sb.append("     * Инициализация всех кнопок на странице\n");
-        sb.append("     */\n");
-        sb.append("    function initButtons() {\n");
-        sb.append("        var buttons = document.querySelectorAll('[schema=\"Action\"]');\n");
-        sb.append("        console.log('cmpButton: Found ' + buttons.length + ' buttons');\n");
-        sb.append("        \n");
-        sb.append("        for (var i = 0; i < buttons.length; i++) {\n");
-        sb.append("            var button = buttons[i];\n");
-        sb.append("            var name = button.getAttribute('name');\n");
-        sb.append("            var actionName = button.getAttribute('action_name');\n");
-        sb.append("            \n");
-        sb.append("            if (name) {\n");
-        sb.append("                // Добавляем обработчик клика\n");
-        sb.append("                button.addEventListener('click', function(e) {\n");
-        sb.append("                    var btn = e.target;\n");
-        sb.append("                    var name = btn.getAttribute('name');\n");
-        sb.append("                    var actionName = btn.getAttribute('action_name');\n");
-        sb.append("                    \n");
-        sb.append("                    console.log('cmpButton: Button \"' + name + '\" clicked');\n");
-        sb.append("                    \n");
-        sb.append("                    // Генерируем событие клика\n");
-        sb.append("                    var event = new CustomEvent('buttonClick', {\n");
-        sb.append("                        detail: { \n");
-        sb.append("                            name: name,\n");
-        sb.append("                            actionName: actionName,\n");
-        sb.append("                            button: btn\n");
-        sb.append("                        },\n");
-        sb.append("                        bubbles: true\n");
-        sb.append("                    });\n");
-        sb.append("                    btn.dispatchEvent(event);\n");
-        sb.append("                    \n");
-        sb.append("                    // Вызываем пользовательский обработчик если есть\n");
-        sb.append("                    if (buttonClickHandlers[name]) {\n");
-        sb.append("                        buttonClickHandlers[name](btn);\n");
-        sb.append("                    }\n");
-        sb.append("                });\n");
-        sb.append("                \n");
-        sb.append("                // Добавляем обработчик наведения\n");
-        sb.append("                button.addEventListener('mouseenter', function(e) {\n");
-        sb.append("                    var btn = e.target;\n");
-        sb.append("                    var name = btn.getAttribute('name');\n");
-        sb.append("                    \n");
-        sb.append("                    // Генерируем событие наведения\n");
-        sb.append("                    var event = new CustomEvent('buttonHover', {\n");
-        sb.append("                        detail: { name: name },\n");
-        sb.append("                        bubbles: true\n");
-        sb.append("                    });\n");
-        sb.append("                    btn.dispatchEvent(event);\n");
-        sb.append("                });\n");
-        sb.append("                \n");
-        sb.append("                // Добавляем обработчик ухода мыши\n");
-        sb.append("                button.addEventListener('mouseleave', function(e) {\n");
-        sb.append("                    var btn = e.target;\n");
-        sb.append("                    var name = btn.getAttribute('name');\n");
-        sb.append("                    \n");
-        sb.append("                    // Генерируем событие ухода мыши\n");
-        sb.append("                    var event = new CustomEvent('buttonLeave', {\n");
-        sb.append("                        detail: { name: name },\n");
-        sb.append("                        bubbles: true\n");
-        sb.append("                    });\n");
-        sb.append("                    btn.dispatchEvent(event);\n");
-        sb.append("                });\n");
-        sb.append("                \n");
-        sb.append("                // Добавляем обработчик фокуса\n");
-        sb.append("                button.addEventListener('focus', function(e) {\n");
-        sb.append("                    var btn = e.target;\n");
-        sb.append("                    var name = btn.getAttribute('name');\n");
-        sb.append("                    \n");
-        sb.append("                    // Генерируем событие фокуса\n");
-        sb.append("                    var event = new CustomEvent('buttonFocus', {\n");
-        sb.append("                        detail: { name: name },\n");
-        sb.append("                        bubbles: true\n");
-        sb.append("                    });\n");
-        sb.append("                    btn.dispatchEvent(event);\n");
-        sb.append("                });\n");
-        sb.append("                \n");
-        sb.append("                // Добавляем обработчик потери фокуса\n");
-        sb.append("                button.addEventListener('blur', function(e) {\n");
-        sb.append("                    var btn = e.target;\n");
-        sb.append("                    var name = btn.getAttribute('name');\n");
-        sb.append("                    \n");
-        sb.append("                    // Генерируем событие потери фокуса\n");
-        sb.append("                    var event = new CustomEvent('buttonBlur', {\n");
-        sb.append("                        detail: { name: name },\n");
-        sb.append("                        bubbles: true\n");
-        sb.append("                    });\n");
-        sb.append("                    btn.dispatchEvent(event);\n");
-        sb.append("                });\n");
-        sb.append("            }\n");
-        sb.append("        }\n");
-        sb.append("    }\n");
-        sb.append("\n");
-        sb.append("    /**\n");
-        sb.append("     * Расширение D3Api для работы с кнопками\n");
-        sb.append("     */\n");
-        sb.append("    if (typeof D3Api !== 'undefined') {\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Установка обработчика клика на кнопку\n");
-        sb.append("         * @param {string} name - Имя кнопки\n");
-        sb.append("         * @param {Function} handler - Функция обработчик\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.onClick = function(name, handler) {\n");
-        sb.append("            if (typeof handler !== 'function') return;\n");
-        sb.append("            \n");
-        sb.append("            var button = document.querySelector('[name=\"' + name + '\"]');\n");
-        sb.append("            if (button) {\n");
-        sb.append("                buttonClickHandlers[name] = handler;\n");
-        sb.append("                console.log('cmpButton: Click handler set for', name);\n");
-        sb.append("            }\n");
-        sb.append("        };\n");
-        sb.append("        \n");
-        sb.append("        /**\n");
-        sb.append("         * Удаление обработчика клика с кнопки\n");
-        sb.append("         * @param {string} name - Имя кнопки\n");
-        sb.append("         */\n");
-        sb.append("        D3Api.offClick = function(name) {\n");
-        sb.append("            if (buttonClickHandlers[name]) {\n");
-        sb.append("                delete buttonClickHandlers[name];\n");
-        sb.append("                console.log('cmpButton: Click handler removed for', name);\n");
-        sb.append("            }\n");
-        sb.append("        };\n");
-        sb.append("        \n");
-        sb.append("        // Алиас для обратной совместимости\n");
-        sb.append("        D3Api.onButtonClick = D3Api.onClick;\n");
-        sb.append("    }\n");
-        sb.append("\n");
-        sb.append("    // Инициализация после загрузки DOM\n");
-        sb.append("    if (document.readyState === 'loading') {\n");
-        sb.append("        document.addEventListener('DOMContentLoaded', function() {\n");
-        sb.append("            initButtons();\n");
-        sb.append("            \n");
-        sb.append("            // Добавляем расширения в существующие методы D3Api\n");
-        sb.append("            if (typeof D3Api !== 'undefined') {\n");
-        sb.append("                // Сохраняем оригинальные методы если они существуют\n");
-        sb.append("                var originalSetCaption = D3Api.setCaption;\n");
-        sb.append("                var originalGetCaption = D3Api.getCaption;\n");
-        sb.append("                var originalSetDisabled = D3Api.setDisabled;\n");
-        sb.append("                \n");
-        sb.append("                // Расширяем setCaption для работы с кнопками\n");
-        sb.append("                D3Api.setCaption = function(name, text) {\n");
-        sb.append("                    // Проверяем, является ли контрол кнопкой\n");
-        sb.append("                    var ctrl = document.querySelector('[name=\"' + name + '\"]');\n");
-        sb.append("                    if (ctrl && ctrl.getAttribute('schema') === 'Action') {\n");
-        sb.append("                        // Для кнопок используем textContent\n");
-        sb.append("                        ctrl.textContent = text;\n");
-        sb.append("                        \n");
-        sb.append("                        // Генерируем событие изменения\n");
-        sb.append("                        var event = new CustomEvent('captionChanged', {\n");
-        sb.append("                            detail: { name: name, newText: text },\n");
-        sb.append("                            bubbles: true\n");
-        sb.append("                        });\n");
-        sb.append("                        ctrl.dispatchEvent(event);\n");
-        sb.append("                        \n");
-        sb.append("                        return true;\n");
-        sb.append("                    } else {\n");
-        sb.append("                        // Для других контролов используем оригинальный метод\n");
-        sb.append("                        if (originalSetCaption) {\n");
-        sb.append("                            return originalSetCaption.call(D3Api, name, text);\n");
-        sb.append("                        }\n");
-        sb.append("                    }\n");
-        sb.append("                    return false;\n");
-        sb.append("                };\n");
-        sb.append("                \n");
-        sb.append("                // Расширяем getCaption для работы с кнопками\n");
-        sb.append("                D3Api.getCaption = function(name) {\n");
-        sb.append("                    // Проверяем, является ли контрол кнопкой\n");
-        sb.append("                    var ctrl = document.querySelector('[name=\"' + name + '\"]');\n");
-        sb.append("                    if (ctrl && ctrl.getAttribute('schema') === 'Action') {\n");
-        sb.append("                        return ctrl.textContent;\n");
-        sb.append("                    } else {\n");
-        sb.append("                        // Для других контролов используем оригинальный метод\n");
-        sb.append("                        if (originalGetCaption) {\n");
-        sb.append("                            return originalGetCaption.call(D3Api, name);\n");
-        sb.append("                        }\n");
-        sb.append("                    }\n");
-        sb.append("                    return null;\n");
-        sb.append("                };\n");
-        sb.append("                \n");
-        sb.append("                // Расширяем setDisabled для работы с easyui классами\n");
-        sb.append("                D3Api.setDisabled = function(name, bool) {\n");
-        sb.append("                    bool = (bool == true);\n");
-        sb.append("                    var ctrl = document.querySelector('[name=\"' + name + '\"]');\n");
-        sb.append("                    if (!ctrl) return false;\n");
-        sb.append("                    \n");
-        sb.append("                    // Проверяем, является ли контрол кнопкой easyui\n");
-        sb.append("                    if (ctrl.classList.contains('easyui-linkbutton')) {\n");
-        sb.append("                        if (bool) {\n");
-        sb.append("                            ctrl.setAttribute('disabled', 'disabled');\n");
-        sb.append("                            ctrl.classList.add('ui-state-disabled');\n");
-        sb.append("                        } else {\n");
-        sb.append("                            ctrl.removeAttribute('disabled');\n");
-        sb.append("                            ctrl.classList.remove('ui-state-disabled', 'ui-button-disabled');\n");
-        sb.append("                        }\n");
-        sb.append("                        return true;\n");
-        sb.append("                    } else {\n");
-        sb.append("                        // Для других контролов используем оригинальный метод\n");
-        sb.append("                        if (originalSetDisabled) {\n");
-        sb.append("                            return originalSetDisabled.call(D3Api, name, bool);\n");
-        sb.append("                        }\n");
-        sb.append("                    }\n");
-        sb.append("                    return false;\n");
-        sb.append("                };\n");
-        sb.append("                \n");
-        sb.append("                // Добавляем удобные методы-алиасы\n");
-        sb.append("                D3Api.setEnabled = function(name, bool) {\n");
-        sb.append("                    return this.setDisabled(name, !bool);\n");
-        sb.append("                };\n");
-        sb.append("                \n");
-        sb.append("                console.log('cmpButton: D3Api extended with button functionality');\n");
-        sb.append("            }\n");
-        sb.append("        });\n");
-        sb.append("    } else {\n");
-        sb.append("        initButtons();\n");
-        sb.append("    }\n");
-        sb.append("})();\n");
+        StringBuilder js = new StringBuilder();
+        js.append("""
+                (function() {
+                    if (window.cmpButtonInitialized) return;
+                    
+                    // Функция ожидания инициализации D3Api
+                    function waitForD3Api(callback) {
+                        function checkD3Api() {
+                            if (typeof window.D3Api !== 'undefined' && 
+                                window.D3Api !== null) {
+                                callback();
+                                return;
+                            }
+                            requestAnimationFrame(checkD3Api);
+                        }
+                        checkD3Api();
+                    }
+                    
+                    function initialize() {
+                        if (window.cmpButtonInitialized) return;
+                        window.cmpButtonInitialized = true;
+                        
+                        console.log('cmpButton: JavaScript library initialized');
+                        
+                        // Хранилище для обработчиков событий
+                        var buttonClickHandlers = {};
+                        
+                        /**
+                         * Инициализация всех кнопок на странице
+                         */
+                        function initButtons() {
+                            var buttons = document.querySelectorAll('[cmptype="Button"]');
+                            console.log('cmpButton: Found ' + buttons.length + ' buttons');
+                            
+                            for (var i = 0; i < buttons.length; i++) {
+                                var button = buttons[i];
+                                var name = button.getAttribute('name');
+                                var popupmenu = button.getAttribute('data-popupmenu');
+                                
+                                if (name) {
+                                    // Добавляем обработчик клика если его нет
+                                    if (!button.hasAttribute('data-handler-initialized')) {
+                                        button.addEventListener('click', function(e) {
+                                            var btn = e.currentTarget;
+                                            var name = btn.getAttribute('name');
+                                            var actionName = btn.getAttribute('action_name');
+                                            
+                                            console.log('cmpButton: Button "' + name + '" clicked');
+                                            
+                                            // Генерируем событие клика
+                                            var event = new CustomEvent('buttonClick', {
+                                                detail: { 
+                                                    name: name,
+                                                    actionName: actionName,
+                                                    button: btn
+                                                },
+                                                bubbles: true
+                                            });
+                                            btn.dispatchEvent(event);
+                                            
+                                            // Вызываем пользовательский обработчик если есть
+                                            if (buttonClickHandlers[name]) {
+                                                buttonClickHandlers[name](btn);
+                                            }
+                                        });
+                                        
+                                        // Добавляем обработчик наведения
+                                        button.addEventListener('mouseenter', function(e) {
+                                            var btn = e.currentTarget;
+                                            var name = btn.getAttribute('name');
+                                            
+                                            var event = new CustomEvent('buttonHover', {
+                                                detail: { name: name },
+                                                bubbles: true
+                                            });
+                                            btn.dispatchEvent(event);
+                                        });
+                                        
+                                        // Добавляем обработчик ухода мыши
+                                        button.addEventListener('mouseleave', function(e) {
+                                            var btn = e.currentTarget;
+                                            var name = btn.getAttribute('name');
+                                            
+                                            var event = new CustomEvent('buttonLeave', {
+                                                detail: { name: name },
+                                                bubbles: true
+                                            });
+                                            btn.dispatchEvent(event);
+                                        });
+                                        
+                                        // Добавляем обработчик фокуса
+                                        button.addEventListener('focus', function(e) {
+                                            var btn = e.currentTarget;
+                                            var name = btn.getAttribute('name');
+                                            
+                                            var event = new CustomEvent('buttonFocus', {
+                                                detail: { name: name },
+                                                bubbles: true
+                                            });
+                                            btn.dispatchEvent(event);
+                                        });
+                                        
+                                        // Добавляем обработчик потери фокуса
+                                        button.addEventListener('blur', function(e) {
+                                            var btn = e.currentTarget;
+                                            var name = btn.getAttribute('name');
+                                            
+                                            var event = new CustomEvent('buttonBlur', {
+                                                detail: { name: name },
+                                                bubbles: true
+                                            });
+                                            btn.dispatchEvent(event);
+                                        });
+                                        
+                                        // Обработка клавиш Enter и Space
+                                        button.addEventListener('keydown', function(e) {
+                                            if (e.keyCode === 13 || e.keyCode === 32) {
+                                                e.preventDefault();
+                                                this.click();
+                                            }
+                                        });
+                                        
+                                        button.setAttribute('data-handler-initialized', 'true');
+                                    }
+                                }
+                            }
+                        }
+                        
+                        /**
+                         * Показ popup меню
+                         * @param {Event} e - Событие
+                         * @param {HTMLElement} dom - DOM элемент кнопки
+                         * @param {string} menuName - Имя меню
+                         */
+                        function showPopupMenu(e, dom, menuName) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            
+                            var ctrl = getControlByDom(dom);
+                            if (!ctrl || !ctrl.D3Form) return;
+                            
+                            var menu = ctrl.D3Form.getControl(menuName);
+                            if (menu && typeof D3Api.PopupMenuCtrl !== 'undefined') {
+                                var coords = {
+                                    left: ctrl.getBoundingClientRect().left + 6,
+                                    top: ctrl.getBoundingClientRect().bottom + 6
+                                };
+                                menu.D3Store.popupObject = ctrl || menu.D3Store.popupObject;
+                                D3Api.PopupMenuCtrl.show(menu, coords);
+                            }
+                        }
+                        
+                        /**
+                         * Получение контрола по DOM элементу
+                         * @param {HTMLElement} dom - DOM элемент
+                         * @returns {Object} - Контрол
+                         */
+                        function getControlByDom(dom) {
+                            while (dom) {
+                                if (dom.D3Api) return dom.D3Api;
+                                dom = dom.parentNode;
+                            }
+                            return null;
+                        }
+                        
+                        /**
+                         * Установка подписи кнопки
+                         * @param {HTMLElement} dom - DOM элемент кнопки
+                         * @param {string} value - Новый текст
+                         * @returns {boolean}
+                         */
+                        function setCaption(dom, value) {
+                            var c = dom.querySelector('.btn_caption');
+                            if (c) {
+                                c.innerHTML = value;
+                                
+                                // Генерируем событие изменения
+                                var event = new CustomEvent('captionChanged', {
+                                    detail: { name: dom.getAttribute('name'), newText: value },
+                                    bubbles: true
+                                });
+                                dom.dispatchEvent(event);
+                                
+                                return true;
+                            }
+                            return false;
+                        }
+                        
+                        /**
+                         * Получение подписи кнопки
+                         * @param {HTMLElement} dom - DOM элемент кнопки
+                         * @returns {string}
+                         */
+                        function getCaption(dom) {
+                            var c = dom.querySelector('.btn_caption');
+                            return c ? c.innerHTML : '';
+                        }
+                        
+                        /**
+                         * Установка состояния disabled
+                         * @param {HTMLElement} dom - DOM элемент кнопки
+                         * @param {boolean} bool - true - disabled, false - enabled
+                         * @returns {boolean}
+                         */
+                        function setDisabled(dom, bool) {
+                            if (!dom) return false;
+                            
+                            bool = (bool === true);
+                            
+                            if (bool) {
+                                dom.setAttribute('disabled', 'disabled');
+                                dom.classList.add('ctrl_disable');
+                            } else {
+                                dom.removeAttribute('disabled');
+                                dom.classList.remove('ctrl_disable');
+                            }
+                            
+                            return true;
+                        }
+                        
+                        /**
+                         * Получение состояния disabled
+                         * @param {HTMLElement} dom - DOM элемент кнопки
+                         * @returns {boolean}
+                         */
+                        function isDisabled(dom) {
+                            return dom.hasAttribute('disabled') || dom.classList.contains('ctrl_disable');
+                        }
+                        
+                        /**
+                         * Установка enabled состояния
+                         * @param {HTMLElement} dom - DOM элемент кнопки
+                         * @param {boolean} bool - true - enabled, false - disabled
+                         * @returns {boolean}
+                         */
+                        function setEnabled(dom, bool) {
+                            return setDisabled(dom, !bool);
+                        }
+                        
+                        // Расширение D3Api
+                        if (typeof D3Api !== 'undefined') {
+                            
+                            // Создаем объект ButtonCtrl
+                            D3Api.ButtonCtrl = {
+                                init: function(dom) {
+                                    // Инициализация фокуса
+                                    if (dom && !dom.hasAttribute('tabindex')) {
+                                        dom.setAttribute('tabindex', '0');
+                                    }
+                                },
+                                
+                                setCaption: setCaption,
+                                getCaption: getCaption,
+                                setDisabled: setDisabled,
+                                setEnabled: setEnabled,
+                                isDisabled: isDisabled,
+                                showPopupMenu: showPopupMenu,
+                                
+                                CtrlKeyDown: function(dom, e) {
+                                    switch (e.keyCode) {
+                                        case 32: // Space
+                                        case 13: // Enter
+                                            dom.click();
+                                            D3Api.stopEvent(e);
+                                            break;
+                                    }
+                                }
+                            };
+                            
+                            // Регистрируем API для кнопок
+                            D3Api.controlsApi = D3Api.controlsApi || {};
+                            D3Api.controlsApi['Button'] = new D3Api.ControlBaseProperties(D3Api.ButtonCtrl);
+                            D3Api.controlsApi['Button']['caption'] = {
+                                get: D3Api.ButtonCtrl.getCaption,
+                                set: D3Api.ButtonCtrl.getCaption
+                            };
+                            
+                            /**
+                             * Установка обработчика клика на кнопку
+                             * @param {string} name - Имя кнопки
+                             * @param {Function} handler - Функция обработчик
+                             */
+                            D3Api.onClick = function(name, handler) {
+                                if (typeof handler !== 'function') return;
+                                
+                                var button = document.querySelector('[name="' + name + '"]');
+                                if (button) {
+                                    buttonClickHandlers[name] = handler;
+                                    console.log('cmpButton: Click handler set for', name);
+                                }
+                            };
+                            
+                            /**
+                             * Удаление обработчика клика с кнопки
+                             * @param {string} name - Имя кнопки
+                             */
+                            D3Api.offClick = function(name) {
+                                if (buttonClickHandlers[name]) {
+                                    delete buttonClickHandlers[name];
+                                    console.log('cmpButton: Click handler removed for', name);
+                                }
+                            };
+                            
+                            /**
+                             * Получение кнопки по имени
+                             * @param {string} name - Имя кнопки
+                             * @returns {HTMLElement}
+                             */
+                            D3Api.getButton = function(name) {
+                                return document.querySelector('[name="' + name + '"]');
+                            };
+                            
+                            // Алиас для обратной совместимости
+                            D3Api.onButtonClick = D3Api.onClick;
+                            
+                            console.log('cmpButton: D3Api extended with button functionality');
+                        }
+                        
+                        // Инициализация после загрузки DOM
+                        if (document.readyState === 'loading') {
+                            document.addEventListener('DOMContentLoaded', function() {
+                                initButtons();
+                            });
+                        } else {
+                            initButtons();
+                        }
+                    }
+                    
+                    waitForD3Api(initialize);
+                })();
+                """);
 
-        return sb.toString().getBytes();
+        return js.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 }
