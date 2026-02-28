@@ -934,20 +934,32 @@ public class cmpWindow_js {
                                 const parser = new DOMParser();
                                 const doc = parser.parseFromString(html, 'text/html');
                 
+                                // ============== КОПИРОВАНИЕ CSS СТИЛЕЙ ==============
+                                // Копируем все стили из head загруженного документа
+                                const head = doc.querySelector('head');
+                                if (head) {
+                                    // Копируем все элементы head (стили, мета-теги, ссылки)
+                                    Array.from(head.children).forEach(el => {
+                                        try {
+                                            // Для link и style элементов
+                                            if (el.tagName === 'LINK' || el.tagName === 'STYLE') {
+                                                const clonedEl = el.cloneNode(true);
+                                                iframeDoc.head.appendChild(clonedEl);
+                                                console.log('Copied style element:', el.tagName, el.getAttribute('href') || 'inline');
+                                            } else if (el.tagName !== 'TITLE') {
+                                                // Для других элементов head
+                                                iframeDoc.head.appendChild(el.cloneNode(true));
+                                            }
+                                        } catch (e) {
+                                            console.warn('Failed to copy head element:', e);
+                                        }
+                                    });
+                                }
+                
                                 // Извлекаем заголовок
                                 const title = doc.querySelector('title');
                                 if (title) {
                                     iframeDoc.title = title.textContent;
-                                }
-                
-                                // Копируем head элементы (стили, мета-теги)
-                                const head = doc.querySelector('head');
-                                if (head) {
-                                    Array.from(head.children).forEach(el => {
-                                        if (el.tagName !== 'TITLE') {
-                                            iframeDoc.head.appendChild(el.cloneNode(true));
-                                        }
-                                    });
                                 }
                 
                                 // Сохраняем body для последующей вставки

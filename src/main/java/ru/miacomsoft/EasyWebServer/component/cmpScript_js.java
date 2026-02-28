@@ -43,94 +43,193 @@ public class cmpScript_js {
                         }
                         
                         // Добавляем базовые методы для Form
-                        window.Form.getVar = function(name, defValue) {
-                            // Если D3Api уже загружен, используем его методы
-                            if (window.D3Api && window.D3Api.getVar) {
-                                return window.D3Api.getVar(name, defValue);
-                            }
-                            return defValue;
-                        };
-                        
-                        window.Form.setVar = function(name, value) {
-                            if (window.D3Api && window.D3Api.setVar) {
-                                window.D3Api.setVar(name, value);
-                            }
-                        };
-                        
-                        window.Form.getValue = function(name, defValue) {
-                            if (window.D3Api && window.D3Api.getValue) {
-                                return window.D3Api.getValue(name, defValue);
-                            }
-                            return defValue;
-                        };
-                        
-                        window.Form.setValue = function(name, value) {
-                            if (window.D3Api && window.D3Api.setValue) {
-                                window.D3Api.setValue(name, value);
-                            }
-                        };
-                        
-                        window.Form.getCaption = function(name) {
-                            if (window.D3Api && window.D3Api.getCaption) {
-                                return window.D3Api.getCaption(name);
-                            }
-                            return '';
-                        };
-                        
-                        window.Form.setCaption = function(name, value) {
-                            if (window.D3Api && window.D3Api.setCaption) {
-                                window.D3Api.setCaption(name, value);
-                            }
-                        };
-                        
-                        window.Form.close = function(result) {
-                            if (window.D3Api && window.D3Api.close) {
-                                window.D3Api.close(result);
-                            } else if (window.close) {
-                                window.close(result);
-                            }
-                        };
-                        
-                        // Добавляем метод для получения DOM формы
-                        window.Form.getDOM = function() {
-                            return document.querySelector('[cmptype="Form"]');
-                        };
-                        
-                        console.log('cmpScript: Form object initialized with basic methods');
-                        
-                        // Проверяем наличие ControlBaseProperties и определяем его если нет
-                        if (typeof D3Api.ControlBaseProperties !== 'function') {
-                            console.log('cmpScript: Defining D3Api.ControlBaseProperties');
-                            D3Api.ControlBaseProperties = function(controlAPI) {
-                                this._API_ = controlAPI || D3Api.BaseCtrl;
-                                this.name = {get: D3Api.BaseCtrl.getName, set: D3Api.BaseCtrl.setName, type: 'string'};
-                                this.value = {get: D3Api.BaseCtrl.getValue, set: D3Api.BaseCtrl.setValue, type: 'string'};
-                                this.caption = {get: D3Api.BaseCtrl.getCaption, set: D3Api.BaseCtrl.setCaption, type: 'string'};
-                                this.width = {get: D3Api.BaseCtrl.getWidth, set: D3Api.BaseCtrl.setWidth, type: 'string'};
-                                this.height = {get: D3Api.BaseCtrl.getHeight, set: D3Api.BaseCtrl.setHeight, type: 'string'};
-                                this.real_width = {get: D3Api.BaseCtrl.getRealWidth, type: 'number'};
-                                this.real_height = {get: D3Api.BaseCtrl.getRealHeight, type: 'number'};
-                                this.enabled = {get: D3Api.BaseCtrl.getEnabled, set: D3Api.BaseCtrl.setEnabled, type: 'boolean'};
-                                this.visible = {get: D3Api.BaseCtrl.getVisible, set: D3Api.BaseCtrl.setVisible, type: 'boolean'};
-                                this.hint = {get: D3Api.BaseCtrl.getHint, set: D3Api.BaseCtrl.setHint, type: 'string'};
-                                this.focus = {set: D3Api.BaseCtrl.setFocus, type: 'boolean'};
-                                this.warning = {set: D3Api.BaseCtrl.setWarning, get: D3Api.BaseCtrl.getWarning, type: 'boolean'};
-                                this.error = {set: D3Api.BaseCtrl.setError, get: D3Api.BaseCtrl.getError, type: 'boolean'};
-                                this.html = {get: D3Api.BaseCtrl.getHtml, set: D3Api.BaseCtrl.setHtml, type: 'string'};
-                                this.input = {get: D3Api.BaseCtrl.getInput, type: 'dom'};
+                        if (!window.Form.getVar) {
+                            window.Form.getVar = function(name, defValue) {
+                                if (window.D3Api && window.D3Api.getVar) {
+                                    return window.D3Api.getVar(name, defValue);
+                                }
+                                return defValue;
                             };
                         }
                         
-                        // Проверяем наличие BaseCtrl и определяем его если нет
-                        if (typeof D3Api.BaseCtrl === 'undefined') {
-                            console.log('cmpScript: D3Api.BaseCtrl not found, waiting for it...');
-                            // Пробуем еще раз через небольшую задержку
+                        if (!window.Form.setVar) {
+                            window.Form.setVar = function(name, value) {
+                                if (window.D3Api && window.D3Api.setVar) {
+                                    window.D3Api.setVar(name, value);
+                                }
+                            };
+                        }
+                        
+                        if (!window.Form.getValue) {
+                            window.Form.getValue = function(name, defValue) {
+                                if (window.D3Api && window.D3Api.getValue) {
+                                    return window.D3Api.getValue(name, defValue);
+                                }
+                                return defValue;
+                            };
+                        }
+                        
+                        if (!window.Form.setValue) {
+                            window.Form.setValue = function(name, value) {
+                                if (window.D3Api && window.D3Api.setValue) {
+                                    window.D3Api.setValue(name, value);
+                                }
+                            };
+                        }
+                        
+                        if (!window.Form.getCaption) {
+                            window.Form.getCaption = function(name) {
+                                if (window.D3Api && window.D3Api.getCaption) {
+                                    return window.D3Api.getCaption(name);
+                                }
+                                return '';
+                            };
+                        }
+                        
+                        if (!window.Form.setCaption) {
+                            window.Form.setCaption = function(name, value) {
+                                if (window.D3Api && window.D3Api.setCaption) {
+                                    window.D3Api.setCaption(name, value);
+                                }
+                            };
+                        }
+                        
+                        if (!window.Form.close) {
+                            window.Form.close = function(result) {
+                                if (window.D3Api && window.D3Api.close) {
+                                    window.D3Api.close(result);
+                                } else if (window.close) {
+                                    window.close(result);
+                                }
+                            };
+                        }
+                        
+                        // Добавляем метод для получения DOM формы
+                        if (!window.Form.getDOM) {
+                            window.Form.getDOM = function() {
+                                return document.querySelector('[cmptype="Form"]');
+                            };
+                        }
+                        
+                        console.log('cmpScript: Form object initialized with basic methods');
+                        
+                        // Проверяем наличие D3Api и базовых классов
+                        if (typeof D3Api === 'undefined') {
+                            console.log('cmpScript: D3Api not found, waiting...');
                             setTimeout(function() {
                                 waitForD3Api(initialize);
                             }, 100);
                             return;
                         }
-                        debugger
+                        
+                        // Проверяем наличие BaseCtrl
+                        if (typeof D3Api.BaseCtrl === 'undefined') {
+                            console.log('cmpScript: D3Api.BaseCtrl not found, waiting for it...');
+                            setTimeout(function() {
+                                waitForD3Api(initialize);
+                            }, 100);
+                            return;
+                        }
+                        
+                        // Проверяем наличие ControlBaseProperties и определяем его если нет
+                        if (typeof D3Api.ControlBaseProperties !== 'function') {
+                            console.log('cmpScript: Defining D3Api.ControlBaseProperties');
+                            
+                            // Определяем ControlBaseProperties с проверкой на существование BaseCtrl
+                            D3Api.ControlBaseProperties = function(controlAPI) {
+                                this._API_ = controlAPI || D3Api.BaseCtrl || {};
+                                
+                                // Безопасное получение методов с проверкой
+                                var baseCtrl = D3Api.BaseCtrl || {};
+                                
+                                this.name = {
+                                    get: baseCtrl.getName ? function(dom) { return baseCtrl.getName(dom); } : function() { return ''; },
+                                    set: baseCtrl.setName ? function(dom, val) { baseCtrl.setName(dom, val); } : function() {},
+                                    type: 'string'
+                                };
+                                
+                                this.value = {
+                                    get: baseCtrl.getValue ? function(dom) { return baseCtrl.getValue(dom); } : function() { return ''; },
+                                    set: baseCtrl.setValue ? function(dom, val) { baseCtrl.setValue(dom, val); } : function() {},
+                                    type: 'string'
+                                };
+                                
+                                this.caption = {
+                                    get: baseCtrl.getCaption ? function(dom) { return baseCtrl.getCaption(dom); } : function() { return ''; },
+                                    set: baseCtrl.setCaption ? function(dom, val) { baseCtrl.setCaption(dom, val); } : function() {},
+                                    type: 'string'
+                                };
+                                
+                                this.width = {
+                                    get: baseCtrl.getWidth ? function(dom) { return baseCtrl.getWidth(dom); } : function() { return ''; },
+                                    set: baseCtrl.setWidth ? function(dom, val) { baseCtrl.setWidth(dom, val); } : function() {},
+                                    type: 'string'
+                                };
+                                
+                                this.height = {
+                                    get: baseCtrl.getHeight ? function(dom) { return baseCtrl.getHeight(dom); } : function() { return ''; },
+                                    set: baseCtrl.setHeight ? function(dom, val) { baseCtrl.setHeight(dom, val); } : function() {},
+                                    type: 'string'
+                                };
+                                
+                                this.real_width = {
+                                    get: baseCtrl.getRealWidth ? function(dom) { return baseCtrl.getRealWidth(dom); } : function() { return 0; },
+                                    type: 'number'
+                                };
+                                
+                                this.real_height = {
+                                    get: baseCtrl.getRealHeight ? function(dom) { return baseCtrl.getRealHeight(dom); } : function() { return 0; },
+                                    type: 'number'
+                                };
+                                
+                                this.enabled = {
+                                    get: baseCtrl.getEnabled ? function(dom) { return baseCtrl.getEnabled(dom); } : function() { return true; },
+                                    set: baseCtrl.setEnabled ? function(dom, val) { baseCtrl.setEnabled(dom, val); } : function() {},
+                                    type: 'boolean'
+                                };
+                                
+                                this.visible = {
+                                    get: baseCtrl.getVisible ? function(dom) { return baseCtrl.getVisible(dom); } : function() { return true; },
+                                    set: baseCtrl.setVisible ? function(dom, val) { baseCtrl.setVisible(dom, val); } : function() {},
+                                    type: 'boolean'
+                                };
+                                
+                                this.hint = {
+                                    get: baseCtrl.getHint ? function(dom) { return baseCtrl.getHint(dom); } : function() { return ''; },
+                                    set: baseCtrl.setHint ? function(dom, val) { baseCtrl.setHint(dom, val); } : function() {},
+                                    type: 'string'
+                                };
+                                
+                                this.focus = {
+                                    set: baseCtrl.setFocus ? function(dom, val) { baseCtrl.setFocus(dom, val); } : function() {},
+                                    type: 'boolean'
+                                };
+                                
+                                this.warning = {
+                                    set: baseCtrl.setWarning ? function(dom, val) { baseCtrl.setWarning(dom, val); } : function() {},
+                                    get: baseCtrl.getWarning ? function(dom) { return baseCtrl.getWarning(dom); } : function() { return false; },
+                                    type: 'boolean'
+                                };
+                                
+                                this.error = {
+                                    set: baseCtrl.setError ? function(dom, val) { baseCtrl.setError(dom, val); } : function() {},
+                                    get: baseCtrl.getError ? function(dom) { return baseCtrl.getError(dom); } : function() { return false; },
+                                    type: 'boolean'
+                                };
+                                
+                                this.html = {
+                                    get: baseCtrl.getHtml ? function(dom) { return baseCtrl.getHtml(dom); } : function() { return ''; },
+                                    set: baseCtrl.setHtml ? function(dom, val) { baseCtrl.setHtml(dom, val); } : function() {},
+                                    type: 'string'
+                                };
+                                
+                                this.input = {
+                                    get: baseCtrl.getInput ? function(dom) { return baseCtrl.getInput(dom); } : function() { return null; },
+                                    type: 'dom'
+                                };
+                            };
+                        }
+                        
                         // Хранилище для загруженных скриптов
                         var loadedScripts = {};
                         var scriptPromises = {};
@@ -167,12 +266,11 @@ public class cmpScript_js {
                                     var content = script.textContent || script.value || '';
                                     if (content.trim()) {
                                         try {
-                                            // Выполняем скрипт
+                                            // Выполняем скрипт, передавая объект Form
                                             executeScript(content, name);
                                             script.D3Store.loaded = true;
                                             script.D3Store.promise = Promise.resolve();
                                             
-                                            // После выполнения скрипта проверяем, добавил ли он методы в Form
                                             console.log('cmpScript: Script executed, Form methods:', Object.keys(window.Form));
                                         } catch (e) {
                                             script.D3Store.error = e;
@@ -390,33 +488,37 @@ public class cmpScript_js {
                                 }
                             };
                             
-                            // Регистрируем API для Script
-                            D3Api.controlsApi = D3Api.controlsApi || {};
-                            D3Api.controlsApi['Script'] = new D3Api.ControlBaseProperties(D3Api.ScriptCtrl);
-                            
-                            // Добавляем свойства
-                            D3Api.controlsApi['Script']['loaded'] = {
-                                get: function(dom) {
-                                    return dom && dom.D3Store ? dom.D3Store.loaded : false;
-                                }
-                            };
-                            
-                            D3Api.controlsApi['Script']['content'] = {
-                                get: function(dom) {
-                                    return dom ? (dom.textContent || dom.value || '') : '';
-                                },
-                                set: function(dom, value) {
-                                    if (dom) {
-                                        dom.textContent = value;
-                                        if (dom.D3Store && dom.D3Store.loaded) {
-                                            // Если скрипт уже был загружен, выполняем новый
-                                            executeScript(value, dom.getAttribute('name'));
+                            // Регистрируем API для Script, только если ControlBaseProperties уже определен
+                            if (D3Api.ControlBaseProperties) {
+                                D3Api.controlsApi = D3Api.controlsApi || {};
+                                D3Api.controlsApi['Script'] = new D3Api.ControlBaseProperties(D3Api.ScriptCtrl);
+                                
+                                // Добавляем свойства
+                                D3Api.controlsApi['Script']['loaded'] = {
+                                    get: function(dom) {
+                                        return dom && dom.D3Store ? dom.D3Store.loaded : false;
+                                    }
+                                };
+                                
+                                D3Api.controlsApi['Script']['content'] = {
+                                    get: function(dom) {
+                                        return dom ? (dom.textContent || dom.value || '') : '';
+                                    },
+                                    set: function(dom, value) {
+                                        if (dom) {
+                                            dom.textContent = value;
+                                            if (dom.D3Store && dom.D3Store.loaded) {
+                                                // Если скрипт уже был загружен, выполняем новый
+                                                executeScript(value, dom.getAttribute('name'));
+                                            }
                                         }
                                     }
-                                }
-                            };
-                            
-                            console.log('cmpScript: D3Api extended with script functionality');
+                                };
+                                
+                                console.log('cmpScript: D3Api extended with script functionality');
+                            } else {
+                                console.log('cmpScript: ControlBaseProperties not ready yet');
+                            }
                         }
                         
                         // Инициализация после загрузки DOM
