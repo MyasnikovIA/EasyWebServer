@@ -155,7 +155,6 @@ public class cmpWindow_js {
                             this.originalPosition = null;
                             this.originalSize = null;
                             this.messageHandlers = {};
-                            
                             this.init();
                         }
                         
@@ -268,7 +267,6 @@ public class cmpWindow_js {
                         
                         setupIframeMessaging() {
                             if (!this.iframe) return;
-                            
                             window.addEventListener('message', (event) => {
                                 if (event.source === this.iframe.contentWindow) {
                                     if (event.data && event.data.command) {
@@ -686,89 +684,115 @@ public class cmpWindow_js {
                             }
                         }
                     }
-                    window.openD3Form = function(name, modal, data) {
-                        data = data || {};
-                        data.modal = modal;
-                        
-                        let url = name;
-                        if (name.indexOf('.') === -1) {
-                            url = name + '.html';
-                        }
-                        let win = new DWindow({
-                            modal: modal,
-                            width: data.width || 500,
-                            height: data.height || 400,
-                            caption: data.caption || 'Окно',
-                            theme: data.theme || 'modern',
-                            url: url
-                        });
-                        
-                        // Проверяем, что окно создалось успешно
-                        if (!win.element || !win.iframe) {
-                            console.error('Failed to create window properly');
-                            return null;
-                        }
-                        
-                        // Добавляем обработчик загрузки iframe
-                        win.iframe.addEventListener('load', function() {
-                            
-                            win.sendToIframe({
-                                command: 'init',
-                                data: data.vars || {}
-                            });
-                            
-                            // Показываем окно после загрузки iframe
-                            win.show();
-                            
-                            if (data.oncreate && typeof data.oncreate === 'function') {
-                                data.oncreate.call(win, win);
-                            }
-                        });
-                        
-                        // Добавляем обработчик ошибки загрузки iframe
-                        win.iframe.addEventListener('error', function() {
-                            console.error('Failed to load iframe content:', url);
-                            let contentDiv = win.element.querySelector('.window-content');
-                            if (contentDiv) {
-                                contentDiv.innerHTML = 
-                                    '<div style="color: red; padding: 20px; text-align: center;">' +
-                                    '<h3>Ошибка загрузки</h3>' +
-                                    '<p>Не удалось загрузить: ' + url + '</p>' +
-                                    '<button onclick="this.closest(\\'.window\\').__win.close()">Закрыть</button>' +
-                                    '</div>';
-                            }
-                            win.show(); // Показываем окно даже при ошибке
-                        });
-                        
-                        win.addListener('message', (msg) => {
-                            if (msg.command === 'ready') {
-                                console.log('Iframe ready');
-                            } else if (msg.command === 'close') {
-                                win.close(msg.result);
-                            } else if (msg.command === 'resize') {
-                                if (msg.width && msg.height) {
-                                    win.setSize(msg.width, msg.height);
-                                }
-                            } else if (msg.command === 'setCaption') {
-                                win.setCaption(msg.caption);
-                            }
-                        });
-                        
-                        if (data.onclose && typeof data.onclose === 'function') {
-                            win.addListener('close', (result) => data.onclose(result));
-                        }
-                        
-                        // Таймаут для показа окна, если iframe долго загружается
-                        setTimeout(() => {
-                            if (win && !win.closed && win.element && win.element.style.display === 'none') {
-                                win.show();
-                            }
-                        }, 2000);
-                        
-                        // Сохраняем ссылку на окно в элементе для доступа из кнопок
-                        win.element.__win = win;
-                        return win;
-                    };
+                // ... существующий код до класса DWindow ...
+                
+                                     window.openD3Form = function(name, modal, data) {
+                                         data = data || {};
+                                         data.modal = modal;
+                
+                                         let url = name;
+                                         if (name.indexOf('.') === -1) {
+                                             url = name + '.html';
+                                         }
+                
+                                         console.log('openD3Form: creating window with url:', url, 'data:', data);
+                
+                                         let win = new DWindow({
+                                             modal: modal,
+                                             width: data.width || 500,
+                                             height: data.height || 400,
+                                             caption: data.caption || 'Окно',
+                                             theme: data.theme || 'modern',
+                                             url: url
+                                         });
+                
+                                         // Проверяем, что окно создалось успешно
+                                         if (!win.element || !win.iframe) {
+                                             console.error('Failed to create window properly');
+                                             return null;
+                                         }
+                
+                                         // Добавляем обработчик загрузки iframe
+                                         win.iframe.addEventListener('load', function() {
+                                             console.log('Iframe loaded for window, sending init data:', data.vars);
+                
+                                             // Отправляем переменные в iframe
+                                             win.sendToIframe({
+                                                 command: 'init',
+                                                 data: data.vars || {}  // Передаем vars в iframe
+                                             });
+                
+                                             // Показываем окно после загрузки iframe
+                                             win.show();
+                
+                                             // Вызываем callback создания если есть
+                                             if (data.oncreate && typeof data.oncreate === 'function') {
+                                                 data.oncreate.call(win, win);
+                                             }
+                                         });
+                
+                                         // Добавляем обработчик ошибки загрузки iframe
+                                         win.iframe.addEventListener('error', function() {
+                                             console.error('Failed to load iframe content:', url);
+                                             let contentDiv = win.element.querySelector('.window-content');
+                                             if (contentDiv) {
+                                                 contentDiv.innerHTML =\s
+                                                     '<div style="color: red; padding: 20px; text-align: center;">' +
+                                                     '<h3>Ошибка загрузки</h3>' +
+                                                     '<p>Не удалось загрузить: ' + url + '</p>' +
+                                                     '<button onclick="this.closest(\\'.window\\').__win.close()">Закрыть</button>' +
+                                                     '</div>';
+                                             }
+                                             win.show();
+                                         });
+                
+                                         // Обработчик сообщений от iframe
+                                         win.addListener('message', (msg) => {
+                                             console.log('Message from iframe:', msg);
+                
+                                             if (msg.command === 'ready') {
+                                                 console.log('Iframe ready');
+                                             } else if (msg.command === 'close') {
+                                                 win.close(msg.result);
+                                             } else if (msg.command === 'resize') {
+                                                 if (msg.width && msg.height) {
+                                                     win.setSize(msg.width, msg.height);
+                                                 }
+                                             } else if (msg.command === 'setCaption') {
+                                                 win.setCaption(msg.caption);
+                                             }
+                                         });
+                
+                                         // Сохраняем обработчики onclose
+                                         if (data.onclose) {
+                                             // Если передан массив функций
+                                             if (Array.isArray(data.onclose)) {
+                                                 data.onclose.forEach(callback => {
+                                                     if (typeof callback === 'function') {
+                                                         win.addListener('close', (result) => callback(result));
+                                                     }
+                                                 });
+                                             }\s
+                                             // Если передана одна функция
+                                             else if (typeof data.onclose === 'function') {
+                                                 win.addListener('close', (result) => data.onclose(result));
+                                             }
+                                         }
+                
+                                         // Таймаут для показа окна, если iframe долго загружается
+                                         setTimeout(() => {
+                                             if (win && !win.closed && win.element && win.element.style.display === 'none') {
+                                                 console.log('openD3Form: timeout - showing window anyway');
+                                                 win.show();
+                                             }
+                                         }, 2000);
+                
+                                         // Сохраняем ссылку на окно в элементе для доступа из кнопок
+                                         win.element.__win = win;
+                
+                                         console.log('openD3Form: window created');
+                                         return win;
+                                     };
                     
                     // ============== Добавление методов в D3Api ==============
                     window.D3Api.Window = DWindow;
