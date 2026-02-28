@@ -434,28 +434,28 @@ public class cmpWindow_js {
                             // Добавляем методы для работы со скриптами в окне
                             this.D3Api.loadScript = function(name, src, async, defer) {
                                 if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
-                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.load(name, src, async, defer);
+                                    return self.iframe.contentWindow.D3Api.loadScript(name, src, async, defer);
                                 }
                                 return Promise.reject('Iframe not ready');
                             };
                             
                             this.D3Api.executeScript = function(name, content) {
                                 if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
-                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.execute(name, content);
+                                    return self.iframe.contentWindow.D3Api.executeScript(name, content);
                                 }
                                 return false;
                             };
                             
                             this.D3Api.getScriptStatus = function(name) {
                                 if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
-                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.getStatus(name);
+                                    return self.iframe.contentWindow.D3Api.getScriptStatus(name);
                                 }
                                 return { exists: false, error: 'Iframe not ready' };
                             };
                             
                             this.D3Api.waitForScript = function(name) {
                                 if (self.iframe && self.iframe.contentWindow && self.iframe.contentWindow.D3Api) {
-                                    return self.iframe.contentWindow.D3Api.ScriptCtrl.waitFor(name);
+                                    return self.iframe.contentWindow.D3Api.waitForScript(name);
                                 }
                                 return Promise.reject('Iframe not ready');
                             };
@@ -1028,8 +1028,132 @@ public class cmpWindow_js {
                         win.iframe.addEventListener('load', function() {
                             const iframe = win.iframe;
                             win.document = iframe.contentDocument || iframe.contentWindow.document;
-                        
-                            // Функция для загрузки скрипта синхронно
+                            
+                            // ============== ИНИЦИАЛИЗАЦИЯ ОБЪЕКТА FORM (ДО ЗАГРУЗКИ БИБЛИОТЕК) ==============
+                            // Создаем объект Form ДО загрузки скриптов, чтобы он был доступен в cmpScript
+                            if (typeof win.document.defaultView.Form === 'undefined') {
+                                win.document.defaultView.Form = {};
+                                
+                                // Добавляем базовые методы для Form
+                                win.document.defaultView.Form.getVar = function(name, defValue) {
+                                    // Метод будет переопределен после загрузки D3Api
+                                    return defValue;
+                                };
+                                
+                                win.document.defaultView.Form.setVar = function(name, value) {
+                                    // Метод будет переопределен после загрузки D3Api
+                                };
+                                
+                                win.document.defaultView.Form.getValue = function(name, defValue) {
+                                    // Метод будет переопределен после загрузки D3Api
+                                    return defValue;
+                                };
+                                
+                                win.document.defaultView.Form.setValue = function(name, value) {
+                                    // Метод будет переопределен после загрузки D3Api
+                                };
+                                
+                                win.document.defaultView.Form.getCaption = function(name) {
+                                    // Метод будет переопределен после загрузки D3Api
+                                    return '';
+                                };
+                                
+                                win.document.defaultView.Form.setCaption = function(name, value) {
+                                    // Метод будет переопределен после загрузки D3Api
+                                };
+                                
+                                win.document.defaultView.Form.close = function(result) {
+                                    // Метод будет переопределен после загрузки D3Api
+                                    if (win.D3Api && win.D3Api.close) {
+                                        win.D3Api.close(result);
+                                    }
+                                };
+                                
+                                console.log('Form object pre-initialized in iframe');
+                            }
+                            
+                            // ============== КОМПИЛЯЦИЯ ФУНКЦИЙ ИЗ СКРИПТОВ ==============
+                            // Перебираем все тэги со скриптами и компилируем их в контексте Form
+                            function compileScripts() {
+                                const scripts = win.document.querySelectorAll('[cmptype="Script"]');
+                                console.log('Found ' + scripts.length + ' script components to compile');
+                                
+                                scripts.forEach(function(script) {
+                                    if (script.text && script.text.trim()) {
+                                        try {
+                                            console.log('Compiling script content:', script.text.substring(0, 100) + '...');
+                                            
+                                            // Создаем функцию с параметром Form и выполняем её
+                                            // Это позволит скрипту расширять объект Form
+                                            const scriptFunction = new Function('Form', script.text);
+                                            scriptFunction.call(win.document.defaultView, win.document.defaultView.Form);
+                                            
+                                            console.log('Script compiled successfully');
+                                        } catch (e) {
+                                            console.error('Error compiling script:', e);
+                                        }
+                                    }
+                                });
+                                
+                                // Логируем все методы, которые теперь есть в Form
+                                console.log('Form methods after compilation:', Object.keys(win.document.defaultView.Form));
+                            }
+                            
+                            // Выполняем компиляцию скриптов ДО загрузки библиотек
+                            compileScripts();
+                            
+                            // Функция для инъекции базового D3Api в iframe
+                            function injectBaseD3Api() {
+                                return new Promise((resolve, reject) => {
+                                    try {
+                                        // Создаем скрипт с базовыми определениями D3Api
+                                        const baseScript = win.document.createElement('script');
+                                        baseScript.type = 'text/javascript';
+                                        baseScript.textContent = `
+                                            // Копируем базовые определения из родительского окна
+                                            if (typeof window.D3Api === 'undefined') {
+                                                window.D3Api = {};
+                                            }
+                                            
+                                            // Копируем ControlBaseProperties если он существует
+                                            if (window.parent.D3Api && window.parent.D3Api.ControlBaseProperties) {
+                                                window.D3Api.ControlBaseProperties = window.parent.D3Api.ControlBaseProperties;
+                                            }
+                                            
+                                            // Копируем BaseCtrl если он существует
+                                            if (window.parent.D3Api && window.parent.D3Api.BaseCtrl) {
+                                                window.D3Api.BaseCtrl = window.parent.D3Api.BaseCtrl;
+                                            }
+                                            
+                                            // Копируем базовые методы
+                                            var methodsToCopy = [
+                                                'stopEvent', 'getEvent', 'addEvent', 'removeEvent',
+                                                'getControl', 'setValue', 'getValue', 'setVar', 'getVar',
+                                                'setCaption', 'getCaption', 'setDisabled', 'getBoolean',
+                                                'hasProperty', 'getProperty', 'setProperty',
+                                                'getChildTag', 'hideDom', 'showDom', 'createDom',
+                                                'stringTrim', 'parseDate', 'hours2time', 'debug_msg'
+                                            ];
+                                            
+                                            methodsToCopy.forEach(function(method) {
+                                                if (window.parent.D3Api && window.parent.D3Api[method]) {
+                                                    window.D3Api[method] = window.parent.D3Api[method];
+                                                }
+                                            });
+                                            
+                                            console.log('Base D3Api injected into iframe');
+                                        `;
+                                        
+                                        win.document.head.appendChild(baseScript);
+                                        resolve();
+                                    } catch (e) {
+                                        console.error('Failed to inject base D3Api:', e);
+                                        reject(e);
+                                    }
+                                });
+                            }
+                            
+                            // Функция для загрузки скрипта
                             function loadScriptSync(src) {
                                 return new Promise((resolve, reject) => {
                                     const script = win.document.createElement('script');
@@ -1054,17 +1178,22 @@ public class cmpWindow_js {
                             // Функция для загрузки всех библиотек синхронно
                             async function loadLibraries() {
                                 try {
+                                    // Сначала инжектируем базовый D3Api
+                                    await injectBaseD3Api();
+                                    
                                     // Заменяем {component} на актуальный путь
-                                    // Убедитесь, что переменная component определена где-то выше
-                                    const componentPath = window.component || ''; // или другой способ получения пути
+                                    const componentPath = window.component || '';
                         
                                     const scripts = [
+                                        `/{component}/cmpBase_js`,     // Сначала базовые классы
                                         `/{component}/main_js`,
                                         `/{component}/md5`,
-                                        `/{component}/cmpScript_js`  // Добавляем загрузку cmpScript
+                                        `/{component}/cmpScript_js`,
+                                        `/{component}/cmpEdit_js`,
+                                        `/{component}/cmpButton_js`
                                     ];
                         
-                                    // Загружаем скрипты последовательно (синхронно)
+                                    // Загружаем скрипты последовательно
                                     for (const scriptSrc of scripts) {
                                         await loadScriptSync(scriptSrc);
                                     }
@@ -1080,28 +1209,73 @@ public class cmpWindow_js {
                             // Загружаем библиотеки и продолжаем инициализацию
                             loadLibraries().then((success) => {
                                 if (success) {
-                                    // Библиотеки загружены, продолжаем
+                                    // Библиотеки загружены, обновляем методы Form с реальными D3Api методами
+                                    if (win.D3Api) {
+                                        win.document.defaultView.Form.getVar = function(name, defValue) {
+                                            return win.D3Api.getVar ? win.D3Api.getVar(name, defValue) : defValue;
+                                        };
+                                        
+                                        win.document.defaultView.Form.setVar = function(name, value) {
+                                            if (win.D3Api.setVar) win.D3Api.setVar(name, value);
+                                        };
+                                        
+                                        win.document.defaultView.Form.getValue = function(name, defValue) {
+                                            return win.D3Api.getValue ? win.D3Api.getValue(name, defValue) : defValue;
+                                        };
+                                        
+                                        win.document.defaultView.Form.setValue = function(name, value) {
+                                            if (win.D3Api.setValue) win.D3Api.setValue(name, value);
+                                        };
+                                        
+                                        win.document.defaultView.Form.getCaption = function(name) {
+                                            return win.D3Api.getCaption ? win.D3Api.getCaption(name) : '';
+                                        };
+                                        
+                                        win.document.defaultView.Form.setCaption = function(name, value) {
+                                            if (win.D3Api.setCaption) win.D3Api.setCaption(name, value);
+                                        };
+                                        
+                                        win.document.defaultView.Form.close = function(result) {
+                                            if (win.D3Api.close) {
+                                                win.D3Api.close(result);
+                                            } else {
+                                                window.close(result);
+                                            }
+                                        };
+                                    }
+                                    
+                                    // Если есть элемент Form, сохраняем его атрибуты
                                     const form = win.document.querySelector('[cmptype="Form"]');
-                        
                                     if (form) {
                                         win.caption = form.getAttribute('caption');
                                         const title = win.element.querySelector('[data-role="title"]');
                                         title.innerText = win.caption;
+                                        
+                                        // Сохраняем DOM формы в глобальный объект
+                                        win.document.defaultView.Form._DOM_ = form;
                                     }
-                        
+                                    
                                     win.sendToIframe({
                                         command: 'init',
                                         data: data.vars || {}
                                     });
                         
                                     win.show();
+                                    
+                                    // Вызываем onCreate для Form если он определен
+                                    if (typeof win.document.defaultView.Form.onCreate === 'function') {
+                                        try {
+                                            win.document.defaultView.Form.onCreate.call(win.D3Api, win);
+                                        } catch (e) {
+                                            console.error('Error in Form.onCreate:', e);
+                                        }
+                                    }
                         
                                     if (data.oncreate && typeof data.oncreate === 'function') {
                                         data.oncreate.call(win.D3Api, win);
                                     }
                                 } else {
                                     console.error('Failed to load required libraries');
-                                    // Здесь можно добавить обработку ошибки загрузки
                                 }
                             });
                         });

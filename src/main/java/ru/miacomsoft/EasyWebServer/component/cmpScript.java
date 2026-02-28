@@ -25,58 +25,64 @@ public class cmpScript extends Base {
         String nomodule = RemoveArrKeyRtrn(attrs, "nomodule", null);
         String nonce = RemoveArrKeyRtrn(attrs, "nonce", "");
 
-        // Получаем содержимое скрипта
-        String scriptContent = element.html().trim();
+        // Получаем содержимое скрипта (содержимое между открывающим и закрывающим тегами)
+        String scriptContent = element.html();
 
         // Обрабатываем возможные CDATA секции
-        if (scriptContent.startsWith("<![CDATA[") && scriptContent.endsWith("]]>")) {
-            scriptContent = scriptContent.substring(9, scriptContent.length() - 3).trim();
+        if (scriptContent.startsWith("&lt;![CDATA[") && scriptContent.endsWith("]]&gt;")) {
+            // Удаляем экранированную CDATA обертку
+            scriptContent = scriptContent
+                    .substring(12, scriptContent.length() - 5)
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&amp;", "&")
+                    .replace("&quot;", "\"")
+                    .replace("&#39;", "'");
+        } else if (scriptContent.startsWith("<![CDATA[") && scriptContent.endsWith("]]>")) {
+            // Удаляем CDATA обертку
+            scriptContent = scriptContent.substring(9, scriptContent.length() - 3);
         }
 
-        // Создаем элемент script
-        Element scriptElement = new Element("script");
-        scriptElement.attr("name", name);
-        scriptElement.attr("cmptype", "Script");
-        scriptElement.attr("type", type);
-        scriptElement.attr("charset", charset);
+        // Строим HTML строку вручную
+        StringBuilder scriptHtml = new StringBuilder();
+        scriptHtml.append("<script");
+        scriptHtml.append(" name=\"").append(name).append("\"");
+        scriptHtml.append(" cmptype=\"Script\"");
+        scriptHtml.append(" type=\"").append(type).append("\"");
+        scriptHtml.append(" charset=\"").append(charset).append("\"");
 
-        // Добавляем атрибуты если они есть
         if (!src.isEmpty()) {
-            scriptElement.attr("src", src);
+            scriptHtml.append(" src=\"").append(src).append("\"");
         }
-
         if (async != null) {
-            scriptElement.attr("async", "async");
+            scriptHtml.append(" async=\"async\"");
         }
-
         if (defer != null) {
-            scriptElement.attr("defer", "defer");
+            scriptHtml.append(" defer=\"defer\"");
         }
-
         if (!crossorigin.isEmpty()) {
-            scriptElement.attr("crossorigin", crossorigin);
+            scriptHtml.append(" crossorigin=\"").append(crossorigin).append("\"");
         }
-
         if (!integrity.isEmpty()) {
-            scriptElement.attr("integrity", integrity);
+            scriptHtml.append(" integrity=\"").append(integrity).append("\"");
         }
-
         if (!referrerpolicy.isEmpty()) {
-            scriptElement.attr("referrerpolicy", referrerpolicy);
+            scriptHtml.append(" referrerpolicy=\"").append(referrerpolicy).append("\"");
         }
-
         if (nomodule != null) {
-            scriptElement.attr("nomodule", "nomodule");
+            scriptHtml.append(" nomodule=\"nomodule\"");
         }
-
         if (!nonce.isEmpty()) {
-            scriptElement.attr("nonce", nonce);
+            scriptHtml.append(" nonce=\"").append(nonce).append("\"");
         }
 
-        // Устанавливаем содержимое скрипта
+        scriptHtml.append(">");
+
         if (!scriptContent.isEmpty()) {
-            scriptElement.text(scriptContent);
+            scriptHtml.append("\n").append(scriptContent).append("\n");
         }
+
+        scriptHtml.append("</script>");
 
         // Определяем куда добавить скрипт
         String target = RemoveArrKeyRtrn(attrs, "target", "body"); // head или body
@@ -90,7 +96,7 @@ public class cmpScript extends Base {
 
         // Добавляем скрипт в документ
         if (targetElement != null && targetElement.size() > 0) {
-            targetElement.append(scriptElement.toString());
+            targetElement.append(scriptHtml.toString());
         }
 
         // Очищаем исходный элемент (он будет заменен)

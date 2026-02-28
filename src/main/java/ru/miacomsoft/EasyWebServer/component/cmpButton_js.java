@@ -36,6 +36,29 @@ public class cmpButton_js {
                         
                         console.log('cmpButton: JavaScript library initialized');
                         
+                        // Проверяем наличие ControlBaseProperties и определяем его если нет
+                        if (typeof D3Api.ControlBaseProperties !== 'function') {
+                            console.log('cmpButton: Defining D3Api.ControlBaseProperties');
+                            D3Api.ControlBaseProperties = function(controlAPI) {
+                                this._API_ = controlAPI || D3Api.BaseCtrl;
+                                this.name = {get: D3Api.BaseCtrl.getName, set: D3Api.BaseCtrl.setName, type: 'string'};
+                                this.value = {get: D3Api.BaseCtrl.getValue, set: D3Api.BaseCtrl.setValue, type: 'string'};
+                                this.caption = {get: D3Api.BaseCtrl.getCaption, set: D3Api.BaseCtrl.setCaption, type: 'string'};
+                                this.width = {get: D3Api.BaseCtrl.getWidth, set: D3Api.BaseCtrl.setWidth, type: 'string'};
+                                this.height = {get: D3Api.BaseCtrl.getHeight, set: D3Api.BaseCtrl.setHeight, type: 'string'};
+                                this.real_width = {get: D3Api.BaseCtrl.getRealWidth, type: 'number'};
+                                this.real_height = {get: D3Api.BaseCtrl.getRealHeight, type: 'number'};
+                                this.enabled = {get: D3Api.BaseCtrl.getEnabled, set: D3Api.BaseCtrl.setEnabled, type: 'boolean'};
+                                this.visible = {get: D3Api.BaseCtrl.getVisible, set: D3Api.BaseCtrl.setVisible, type: 'boolean'};
+                                this.hint = {get: D3Api.BaseCtrl.getHint, set: D3Api.BaseCtrl.setHint, type: 'string'};
+                                this.focus = {set: D3Api.BaseCtrl.setFocus, type: 'boolean'};
+                                this.warning = {set: D3Api.BaseCtrl.setWarning, get: D3Api.BaseCtrl.getWarning, type: 'boolean'};
+                                this.error = {set: D3Api.BaseCtrl.setError, get: D3Api.BaseCtrl.getError, type: 'boolean'};
+                                this.html = {get: D3Api.BaseCtrl.getHtml, set: D3Api.BaseCtrl.setHtml, type: 'string'};
+                                this.input = {get: D3Api.BaseCtrl.getInput, type: 'dom'};
+                            };
+                        }
+                        
                         // Хранилище для обработчиков событий
                         var buttonClickHandlers = {};
                         
@@ -286,7 +309,7 @@ public class cmpButton_js {
                             D3Api.controlsApi['Button'] = new D3Api.ControlBaseProperties(D3Api.ButtonCtrl);
                             D3Api.controlsApi['Button']['caption'] = {
                                 get: D3Api.ButtonCtrl.getCaption,
-                                set: D3Api.ButtonCtrl.getCaption
+                                set: D3Api.ButtonCtrl.setCaption
                             };
                             
                             /**

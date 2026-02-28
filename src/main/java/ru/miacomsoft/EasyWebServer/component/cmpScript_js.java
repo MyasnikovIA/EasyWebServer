@@ -35,6 +35,102 @@ public class cmpScript_js {
                         
                         console.log('cmpScript: JavaScript library initialized');
                         
+                        // ============== ИНИЦИАЛИЗАЦИЯ ОБЪЕКТА FORM ==============
+                        // Создаем объект Form в глобальной области видимости, если его еще нет
+                        if (typeof window.Form === 'undefined') {
+                            window.Form = {};
+                            console.log('cmpScript: Form object created');
+                        }
+                        
+                        // Добавляем базовые методы для Form
+                        window.Form.getVar = function(name, defValue) {
+                            // Если D3Api уже загружен, используем его методы
+                            if (window.D3Api && window.D3Api.getVar) {
+                                return window.D3Api.getVar(name, defValue);
+                            }
+                            return defValue;
+                        };
+                        
+                        window.Form.setVar = function(name, value) {
+                            if (window.D3Api && window.D3Api.setVar) {
+                                window.D3Api.setVar(name, value);
+                            }
+                        };
+                        
+                        window.Form.getValue = function(name, defValue) {
+                            if (window.D3Api && window.D3Api.getValue) {
+                                return window.D3Api.getValue(name, defValue);
+                            }
+                            return defValue;
+                        };
+                        
+                        window.Form.setValue = function(name, value) {
+                            if (window.D3Api && window.D3Api.setValue) {
+                                window.D3Api.setValue(name, value);
+                            }
+                        };
+                        
+                        window.Form.getCaption = function(name) {
+                            if (window.D3Api && window.D3Api.getCaption) {
+                                return window.D3Api.getCaption(name);
+                            }
+                            return '';
+                        };
+                        
+                        window.Form.setCaption = function(name, value) {
+                            if (window.D3Api && window.D3Api.setCaption) {
+                                window.D3Api.setCaption(name, value);
+                            }
+                        };
+                        
+                        window.Form.close = function(result) {
+                            if (window.D3Api && window.D3Api.close) {
+                                window.D3Api.close(result);
+                            } else if (window.close) {
+                                window.close(result);
+                            }
+                        };
+                        
+                        // Добавляем метод для получения DOM формы
+                        window.Form.getDOM = function() {
+                            return document.querySelector('[cmptype="Form"]');
+                        };
+                        
+                        console.log('cmpScript: Form object initialized with basic methods');
+                        
+                        // Проверяем наличие ControlBaseProperties и определяем его если нет
+                        if (typeof D3Api.ControlBaseProperties !== 'function') {
+                            console.log('cmpScript: Defining D3Api.ControlBaseProperties');
+                            D3Api.ControlBaseProperties = function(controlAPI) {
+                                this._API_ = controlAPI || D3Api.BaseCtrl;
+                                this.name = {get: D3Api.BaseCtrl.getName, set: D3Api.BaseCtrl.setName, type: 'string'};
+                                this.value = {get: D3Api.BaseCtrl.getValue, set: D3Api.BaseCtrl.setValue, type: 'string'};
+                                this.caption = {get: D3Api.BaseCtrl.getCaption, set: D3Api.BaseCtrl.setCaption, type: 'string'};
+                                this.width = {get: D3Api.BaseCtrl.getWidth, set: D3Api.BaseCtrl.setWidth, type: 'string'};
+                                this.height = {get: D3Api.BaseCtrl.getHeight, set: D3Api.BaseCtrl.setHeight, type: 'string'};
+                                this.real_width = {get: D3Api.BaseCtrl.getRealWidth, type: 'number'};
+                                this.real_height = {get: D3Api.BaseCtrl.getRealHeight, type: 'number'};
+                                this.enabled = {get: D3Api.BaseCtrl.getEnabled, set: D3Api.BaseCtrl.setEnabled, type: 'boolean'};
+                                this.visible = {get: D3Api.BaseCtrl.getVisible, set: D3Api.BaseCtrl.setVisible, type: 'boolean'};
+                                this.hint = {get: D3Api.BaseCtrl.getHint, set: D3Api.BaseCtrl.setHint, type: 'string'};
+                                this.focus = {set: D3Api.BaseCtrl.setFocus, type: 'boolean'};
+                                this.warning = {set: D3Api.BaseCtrl.setWarning, get: D3Api.BaseCtrl.getWarning, type: 'boolean'};
+                                this.error = {set: D3Api.BaseCtrl.setError, get: D3Api.BaseCtrl.getError, type: 'boolean'};
+                                this.html = {get: D3Api.BaseCtrl.getHtml, set: D3Api.BaseCtrl.setHtml, type: 'string'};
+                                this.input = {get: D3Api.BaseCtrl.getInput, type: 'dom'};
+                            };
+                        }
+                        
+                        // Проверяем наличие BaseCtrl и определяем его если нет
+                        if (typeof D3Api.BaseCtrl === 'undefined') {
+                            console.log('cmpScript: D3Api.BaseCtrl not found, waiting for it...');
+                            // Пробуем еще раз через небольшую задержку
+                            setTimeout(function() {
+                                waitForD3Api(initialize);
+                            }, 100);
+                            return;
+                        }
+                        debugger
                         // Хранилище для загруженных скриптов
                         var loadedScripts = {};
                         var scriptPromises = {};
@@ -71,9 +167,13 @@ public class cmpScript_js {
                                     var content = script.textContent || script.value || '';
                                     if (content.trim()) {
                                         try {
+                                            // Выполняем скрипт
                                             executeScript(content, name);
                                             script.D3Store.loaded = true;
                                             script.D3Store.promise = Promise.resolve();
+                                            
+                                            // После выполнения скрипта проверяем, добавил ли он методы в Form
+                                            console.log('cmpScript: Script executed, Form methods:', Object.keys(window.Form));
                                         } catch (e) {
                                             script.D3Store.error = e;
                                             script.D3Store.loaded = false;
@@ -147,8 +247,9 @@ public class cmpScript_js {
                         function executeScript(content, name) {
                             try {
                                 // Используем Function для создания функции в глобальной области видимости
-                                var scriptFunction = new Function(content);
-                                scriptFunction.call(window);
+                                // Передаем объект Form как параметр, чтобы скрипт мог его расширять
+                                var scriptFunction = new Function('Form', 'window', 'document', content);
+                                scriptFunction.call(window, window.Form, window, document);
                                 console.log('cmpScript: Executed inline script', name);
                                 return true;
                             } catch (e) {
